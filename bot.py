@@ -29,8 +29,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'preferredquality': '320',
         }],
         'outtmpl': f'downloads/%(title)s.%(ext)s',
-        'cookiesfrombrowser': ['chrome'],  # Tarayıcı cookie'lerini kullan
-        'ignoreerrors': True,  # Hataları görmezden gel
+        'ignoreerrors': True,
         'no_warnings': True,
         'quiet': True,
         'extract_flat': False,
