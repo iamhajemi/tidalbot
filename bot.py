@@ -1,6 +1,6 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-from pytube import YouTube
+import youtube_dl_exec as youtube_dl
 import os
 from threading import Thread
 from flask import Flask, request
@@ -37,33 +37,39 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # İndirme klasörünü oluştur
         os.makedirs('downloads', exist_ok=True)
         
-        # YouTube videosunu indir
-        yt = YouTube(url)
-        audio_stream = yt.streams.filter(only_audio=True).first()
+        ydl_opts = {
+            'format': 'bestaudio/best',
+            'outtmpl': 'downloads/%(title)s.%(ext)s',
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'mp3',
+                'preferredquality': '320',
+            }],
+            'no_warnings': True,
+            'quiet': True,
+            'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/93.0.4577.63 Safari/537.36',
+            'no_check_certificate': True
+        }
         
-        # Önce mp4 olarak indir
-        downloaded_file = audio_stream.download(output_path='downloads')
-        base, ext = os.path.splitext(downloaded_file)
-        file_path = base + '.mp3'
-        
-        # MP4'ü MP3'e dönüştür
-        os.system(f'ffmpeg -i "{downloaded_file}" -vn -ab 320k "{file_path}"')
-        os.remove(downloaded_file)  # MP4 dosyasını sil
-        
-        await update.message.reply_text("Dosya yükleniyor...")
-        
-        # Dosyayı Telegram'a gönder
-        with open(file_path, 'rb') as audio_file:
-            await context.bot.send_audio(
-                chat_id=chat_id,
-                audio=audio_file,
-                title=yt.title,
-                performer="YouTube Music Bot"
-            )
-        
-        # Geçici dosyayı sil
-        os.remove(file_path)
-        
+        with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            title = info['title']
+            file_path = f"downloads/{title}.mp3"
+            
+            await update.message.reply_text("Dosya yükleniyor...")
+            
+            # Dosyayı Telegram'a gönder
+            with open(file_path, 'rb') as audio_file:
+                await context.bot.send_audio(
+                    chat_id=chat_id,
+                    audio=audio_file,
+                    title=title,
+                    performer="YouTube Music Bot"
+                )
+            
+            # Geçici dosyayı sil
+            os.remove(file_path)
+            
     except Exception as e:
         await update.message.reply_text(f"Hata oluştu: {str(e)}")
         # Hata durumunda geçici dosyaları temizle
