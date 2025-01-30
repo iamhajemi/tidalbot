@@ -71,7 +71,11 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun.")
+    # Update null kontrolü
+    if update and update.message:
+        await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun.")
+    else:
+        print(f"Bir hata oluştu: {context.error}")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -84,7 +88,7 @@ def main():
     Thread(target=run_flask).start()
     
     # Polling'i başlat
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
     main() 
