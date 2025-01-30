@@ -33,13 +33,22 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'preferredquality': '320',
         }],
         'outtmpl': f'downloads/%(title)s.%(ext)s',
-        'cookiesfrombrowser': ('chrome',),
         'quiet': True,
         'no_warnings': True,
-        'extract_flat': False,
+        'extract_flat': True,
         'force_generic_extractor': False,
         'ignoreerrors': True,
         'nocheckcertificate': True,
+        'no_check_certificate': True,
+        'prefer_insecure': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'referer': 'https://www.youtube.com/',
+        'extractor_args': {
+            'youtube': {
+                'skip': ['dash', 'hls'],
+                'player_skip': ['js', 'configs', 'webpage']
+            }
+        }
     }
     
     try:
@@ -47,9 +56,19 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.makedirs('downloads', exist_ok=True)
         
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info['title']
+            # Önce video bilgilerini al
+            info = ydl.extract_info(url, download=False)
+            if info is None:
+                await update.message.reply_text("Video bilgileri alınamadı. Lütfen başka bir video deneyin.")
+                return
+                
+            title = info.get('title', 'video')
+            # Özel karakterleri temizle
+            title = "".join(x for x in title if x.isalnum() or x in (' ', '-', '_'))
             file_path = f"downloads/{title}.mp3"
+            
+            # Şimdi indirmeyi dene
+            ydl.download([url])
             
             await update.message.reply_text("Dosya yükleniyor...")
             
@@ -66,7 +85,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
             
     except Exception as e:
-        await update.message.reply_text(f"Hata oluştu: {str(e)}")
+        error_message = str(e)
+        print(f"Hata detayı: {error_message}")  # Log için
+        await update.message.reply_text(f"İndirme başarısız oldu. Lütfen başka bir video deneyin.")
         # Hata durumunda geçici dosyaları temizle
         if 'file_path' in locals() and os.path.exists(file_path):
             os.remove(file_path)
