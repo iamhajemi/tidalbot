@@ -1,3 +1,5 @@
 python-telegram-bot
-youtube-dl-exec
-flask 
+yt-dlp
+pydub
+ffmpeg-python
+gunicorn 
