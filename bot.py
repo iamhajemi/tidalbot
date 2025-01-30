@@ -2,8 +2,12 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import yt_dlp
 import os
+from flask import Flask, request
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
+
+# Flask app oluştur
+app = Flask(__name__)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -86,9 +90,19 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_error_handler(error_handler)
     
-    # Render için web sunucusu ayarları
-    port = int(os.environ.get('PORT', 8080))
-    application.run_polling(port=port)
+    # Normal polling başlat
+    application.run_polling()
+
+# Render için web endpoint'i
+@app.route('/')
+def home():
+    return 'Bot çalışıyor!'
 
 if __name__ == '__main__':
-    main() 
+    # Eğer RENDER_EXTERNAL_URL varsa (Render ortamı)
+    if os.environ.get('RENDER_EXTERNAL_URL'):
+        port = int(os.environ.get('PORT', 8080))
+        app.run(host='0.0.0.0', port=port)
+    else:
+        # Lokal geliştirme ortamı
+        main() 
