@@ -68,7 +68,16 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             os.remove(file_path)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun.")
+    # Update None değilse ve message varsa
+    if update and update.message:
+        await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun.")
+    # Eğer effective_chat varsa
+    elif update and update.effective_chat:
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun."
+        )
+    print(f"Update {update} caused error {context.error}")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -77,9 +86,9 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_error_handler(error_handler)
     
-    application.run_polling()
+    # Render için web sunucusu ayarları
+    port = int(os.environ.get('PORT', 8080))
+    application.run_polling(port=port)
 
 if __name__ == '__main__':
-    # Render için port ayarı
-    port = int(os.environ.get('PORT', 8080))
     main() 
