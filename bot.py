@@ -29,6 +29,13 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
             'preferredquality': '320',
         }],
         'outtmpl': f'downloads/%(title)s.%(ext)s',
+        'cookiesfrombrowser': ('chrome',),
+        'quiet': True,
+        'no_warnings': True,
+        'extract_flat': False,
+        'force_generic_extractor': False,
+        'ignoreerrors': True,
+        'nocheckcertificate': True,
     }
     
     try:
@@ -73,4 +80,6 @@ def main():
     application.run_polling()
 
 if __name__ == '__main__':
+    # Render için port ayarı
+    port = int(os.environ.get('PORT', 8080))
     main() 
