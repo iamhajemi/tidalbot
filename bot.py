@@ -2,12 +2,16 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 import yt_dlp
 import os
-from flask import Flask, request
+from flask import Flask
+import threading
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
 
 # Flask app oluştur
 app = Flask(__name__)
+
+# Bot uygulamasını global olarak tanımla
+application = Application.builder().token(TELEGRAM_TOKEN).build()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -104,26 +108,30 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     print(f"Update {update} caused error {context.error}")
 
-def main():
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
-    
+def run_bot():
+    """Telegram botunu çalıştır"""
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_error_handler(error_handler)
-    
-    # Normal polling başlat
-    application.run_polling()
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-# Render için web endpoint'i
 @app.route('/')
 def home():
     return 'Bot çalışıyor!'
 
+def run_flask():
+    """Flask uygulamasını çalıştır"""
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port)
+
 if __name__ == '__main__':
-    # Eğer RENDER_EXTERNAL_URL varsa (Render ortamı)
+    # Render ortamında çalışıyorsa
     if os.environ.get('RENDER_EXTERNAL_URL'):
-        port = int(os.environ.get('PORT', 8080))
-        app.run(host='0.0.0.0', port=port)
+        # Bot'u ayrı bir thread'de başlat
+        bot_thread = threading.Thread(target=run_bot)
+        bot_thread.start()
+        # Flask'i ana thread'de çalıştır
+        run_flask()
     else:
-        # Lokal geliştirme ortamı
-        main() 
+        # Lokal ortamda sadece bot'u çalıştır
+        run_bot() 
