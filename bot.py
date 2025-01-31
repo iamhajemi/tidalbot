@@ -19,6 +19,22 @@ logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
 
+def update_from_github():
+    logger.info("GitHub'dan güncel kod alınıyor...")
+    try:
+        # Git pull komutunu çalıştır
+        process = subprocess.Popen(["git", "pull", "origin", "main"], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode == 0:
+            logger.info("GitHub'dan güncelleme başarılı!")
+            if stdout:
+                logger.info(f"Git çıktısı:\n{stdout.decode()}")
+        else:
+            logger.error(f"Git pull hatası: {stderr.decode()}")
+    except Exception as e:
+        logger.error(f"GitHub güncelleme hatası: {str(e)}")
+
 def setup_tidal():
     logger.info("Tidal yapılandırması başlatılıyor...")
     config_dir = os.path.expanduser('~/.tidal-dl')
@@ -206,6 +222,9 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     logger.info("Bot başlatılıyor...")
+    
+    # GitHub'dan güncelle
+    update_from_github()
     
     # Tidal yapılandırmasını ayarla
     setup_tidal()
