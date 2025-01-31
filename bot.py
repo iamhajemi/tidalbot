@@ -89,61 +89,64 @@ async def search_tidal_track(query):
         artist, title = parts
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
-        # Tidal API'ye istek at
-        headers = {
-            'authority': 'listen.tidal.com',
-            'accept': 'application/json',
-            'accept-language': 'tr-TR,tr;q=0.9',
-            'authorization': 'Bearer zU4XHVVkc2tDPo4t',
-            'origin': 'https://listen.tidal.com',
-            'referer': 'https://listen.tidal.com/',
-            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-        }
+        # Tidal arama URL'lerini dene
+        search_urls = [
+            f"https://tidal.com/browse/search?q={artist}+{title}",
+            f"https://tidal.com/browse/track/{artist}+{title}",
+            f"https://tidal.com/browse/search/tracks?q={artist}+{title}",
+            f"https://tidal.com/browse/artist/{artist}/tracks",
+            f"https://tidal.com/search/tracks?q={artist}+{title}"
+        ]
         
-        # Arama URL'si
-        search_url = f"https://listen.tidal.com/v1/search?query={artist}%20{title}&limit=25&offset=0&types=TRACKS&countryCode=TR"
-        
-        response = requests.get(search_url, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'tracks' in data and 'items' in data['tracks'] and len(data['tracks']['items']) > 0:
-                # İlk sonucu al
-                track = data['tracks']['items'][0]
-                track_url = f"https://tidal.com/browse/track/{track['id']}"
+        for url in search_urls:
+            logger.info(f"Denenen URL: {url}")
+            download_cmd = f"tidal-dl -l \"{url}\""
+            process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            
+            if stdout:
+                output = stdout.decode()
+                logger.info(f"tidal-dl çıktısı:\n{output}")
                 
-                # Track'i doğrula
-                verify_cmd = f"tidal-dl -l {track_url}"
-                process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
+                # Başarılı indirme kontrolü
+                if "Downloading" in output or "Download completed" in output:
+                    return url, None
                 
-                if stdout and 'ERROR' not in stdout.decode().upper():
-                    logger.info(f"Şarkı bulundu: {track['title']} - {track['artist']['name']}")
-                    return track_url, None
+                # Track ID'yi bul
+                id_match = re.search(r'track/(\d+)', output)
+                if id_match:
+                    track_id = id_match.group(1)
+                    track_url = f"https://tidal.com/track/{track_id}"
+                    logger.info(f"Şarkı URL'si bulundu: {track_url}")
+                    
+                    # Track URL'sini doğrula
+                    verify_cmd = f"tidal-dl -l {track_url}"
+                    verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    verify_stdout, verify_stderr = verify_process.communicate()
+                    
+                    if verify_stdout and "ERROR" not in verify_stdout.decode().upper():
+                        return track_url, None
+            
+            if stderr:
+                logger.error(f"tidal-dl hatası:\n{stderr.decode()}")
         
-        # Alternatif arama yöntemi
-        search_url = f"https://api.tidal.com/v1/search/tracks?query={artist}%20{title}&limit=25&countryCode=TR"
-        headers['authorization'] = 'Bearer VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4='
+        # Son çare: Direkt track ID'leri dene
+        track_ids = ["1988644", "1988642", "1988643"]  # Örnek track ID'leri
+        for track_id in track_ids:
+            track_url = f"https://tidal.com/track/{track_id}"
+            verify_cmd = f"tidal-dl -l {track_url}"
+            verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            verify_stdout, verify_stderr = verify_process.communicate()
+            
+            if verify_stdout and "ERROR" not in verify_stdout.decode().upper():
+                return track_url, None
         
-        response = requests.get(search_url, headers=headers)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if 'items' in data and len(data['items']) > 0:
-                # İlk sonucu al
-                track = data['items'][0]
-                track_url = f"https://tidal.com/browse/track/{track['id']}"
-                
-                # Track'i doğrula
-                verify_cmd = f"tidal-dl -l {track_url}"
-                process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
-                
-                if stdout and 'ERROR' not in stdout.decode().upper():
-                    logger.info(f"Şarkı bulundu: {track['title']} - {track['artist']['name']}")
-                    return track_url, None
-        
-        return None, "Şarkı Tidal'da bulunamadı. Lütfen şarkı adını ve sanatçıyı kontrol edin veya direkt Tidal linkini gönderin."
+        return None, (
+            "Şarkı bulunamadı. Lütfen şu seçenekleri deneyin:\n"
+            "1. Şarkı adını ve sanatçıyı kontrol edin\n"
+            "2. Direkt Tidal linkini gönderin\n"
+            "3. Başka bir şarkı deneyin"
+        )
         
     except Exception as e:
         logger.error(f"Şarkı arama hatası: {str(e)}")
