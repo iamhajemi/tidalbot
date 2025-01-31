@@ -9,6 +9,7 @@ import json
 import logging
 import datetime
 import requests
+import tidalapi
 
 # Logging ayarları
 logging.basicConfig(
@@ -81,72 +82,30 @@ def setup_tidal():
 async def search_tidal_track(query):
     """Tidal'da şarkı ara"""
     try:
-        # Şarkıcı ve şarkı adını ayır
-        parts = query.split(' ', 1)
-        if len(parts) != 2:
-            return None, "Lütfen 'Sanatçı Şarkı' formatında yazın. Örnek: 'Zamiq Kaman'"
+        # Tidal oturumu başlat
+        session = tidalapi.Session()
+        session.login_oauth_simple()
         
-        artist, title = parts
-        logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
+        logger.info(f"Şarkı aranıyor: {query}")
         
-        # Tidal arama URL'lerini dene
-        search_urls = [
-            f"https://tidal.com/browse/search?q={artist}+{title}",
-            f"https://tidal.com/browse/track/{artist}+{title}",
-            f"https://tidal.com/browse/search/tracks?q={artist}+{title}",
-            f"https://tidal.com/browse/artist/{artist}/tracks",
-            f"https://tidal.com/search/tracks?q={artist}+{title}"
-        ]
+        # Şarkıyı ara
+        search_results = session.search(query, models=[tidalapi.media.Track])
+        tracks = search_results.tracks
         
-        for url in search_urls:
-            logger.info(f"Denenen URL: {url}")
-            download_cmd = f"tidal-dl -l \"{url}\""
-            process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-            
-            if stdout:
-                output = stdout.decode()
-                logger.info(f"tidal-dl çıktısı:\n{output}")
-                
-                # Başarılı indirme kontrolü
-                if "Downloading" in output or "Download completed" in output:
-                    return url, None
-                
-                # Track ID'yi bul
-                id_match = re.search(r'track/(\d+)', output)
-                if id_match:
-                    track_id = id_match.group(1)
-                    track_url = f"https://tidal.com/track/{track_id}"
-                    logger.info(f"Şarkı URL'si bulundu: {track_url}")
-                    
-                    # Track URL'sini doğrula
-                    verify_cmd = f"tidal-dl -l {track_url}"
-                    verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    verify_stdout, verify_stderr = verify_process.communicate()
-                    
-                    if verify_stdout and "ERROR" not in verify_stdout.decode().upper():
-                        return track_url, None
-            
-            if stderr:
-                logger.error(f"tidal-dl hatası:\n{stderr.decode()}")
+        if not tracks:
+            return None, (
+                "Şarkı bulunamadı. Lütfen şu seçenekleri deneyin:\n"
+                "1. Şarkı adını ve sanatçıyı kontrol edin\n"
+                "2. Direkt Tidal linkini gönderin\n"
+                "3. Başka bir şarkı deneyin"
+            )
         
-        # Son çare: Direkt track ID'leri dene
-        track_ids = ["1988644", "1988642", "1988643"]  # Örnek track ID'leri
-        for track_id in track_ids:
-            track_url = f"https://tidal.com/track/{track_id}"
-            verify_cmd = f"tidal-dl -l {track_url}"
-            verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            verify_stdout, verify_stderr = verify_process.communicate()
-            
-            if verify_stdout and "ERROR" not in verify_stdout.decode().upper():
-                return track_url, None
+        # İlk sonucu al
+        track = tracks[0]
+        track_url = f"https://tidal.com/track/{track.id}"
+        logger.info(f"Şarkı bulundu: {track.name} - {track.artist.name} ({track_url})")
         
-        return None, (
-            "Şarkı bulunamadı. Lütfen şu seçenekleri deneyin:\n"
-            "1. Şarkı adını ve sanatçıyı kontrol edin\n"
-            "2. Direkt Tidal linkini gönderin\n"
-            "3. Başka bir şarkı deneyin"
-        )
+        return track_url, None
         
     except Exception as e:
         logger.error(f"Şarkı arama hatası: {str(e)}")
@@ -179,21 +138,52 @@ async def search_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Callback data'dan arama terimini al (tidal_search:ARAMA_TERİMİ)
     search_term = query.data.split(':')[1]
-    search_url = f"https://tidal.com/search?q={search_term.replace(' ', '+')}"
     
-    keyboard = [
-        [InlineKeyboardButton("🔍 Tidal'da Aç", url=search_url)],
-        [InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=f"🎵 Aranan: {search_term}\n\n"
-             f"1. Tidal'da Aç butonuna tıklayın\n"
-             f"2. Şarkıyı bulun\n"
-             f"3. Şarkı linkini buraya gönderin",
-        reply_markup=reply_markup
-    )
+    try:
+        # Tidal oturumu başlat
+        session = tidalapi.Session()
+        session.login_oauth_simple()
+        
+        # Şarkıyı ara
+        search_results = session.search(search_term, models=[tidalapi.media.Track])
+        tracks = search_results.tracks[:5]  # İlk 5 sonucu al
+        
+        if not tracks:
+            keyboard = [[InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(
+                text="❌ Şarkı bulunamadı. Lütfen başka bir arama yapın.",
+                reply_markup=reply_markup
+            )
+            return
+        
+        # Her şarkı için buton oluştur
+        keyboard = []
+        for track in tracks:
+            track_url = f"https://tidal.com/track/{track.id}"
+            button_text = f"🎵 {track.artist.name} - {track.name}"
+            keyboard.append([InlineKeyboardButton(button_text, url=track_url)])
+        
+        # Geri butonu ekle
+        keyboard.append([InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")])
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await query.edit_message_text(
+            text=f"🔍 '{search_term}' için sonuçlar:\n\n"
+                 "1. İstediğiniz şarkıya tıklayın\n"
+                 "2. Açılan Tidal sayfasından şarkı linkini kopyalayın\n"
+                 "3. Linki buraya gönderin",
+            reply_markup=reply_markup
+        )
+        
+    except Exception as e:
+        logger.error(f"Arama hatası: {str(e)}")
+        keyboard = [[InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await query.edit_message_text(
+            text=f"❌ Arama sırasında hata oluştu: {str(e)}",
+            reply_markup=reply_markup
+        )
 
 async def back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Geri butonuna tıklandığında"""
