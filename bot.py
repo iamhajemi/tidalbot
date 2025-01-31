@@ -8,6 +8,7 @@ import shutil
 import json
 import logging
 import datetime
+import requests
 
 # Logging ayarları
 logging.basicConfig(
@@ -18,6 +19,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
+TIDAL_API_TOKEN = "zU4XHVVkc2tDPo4t"  # Tidal API token
 
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
@@ -76,12 +78,50 @@ def setup_tidal():
         json.dump(config, f, indent=4)
     logger.info("Tidal yapılandırması tamamlandı.")
 
+async def search_tidal_track(query):
+    """Tidal'da şarkı ara"""
+    try:
+        # Şarkıcı ve şarkı adını ayır
+        parts = query.split(' ', 1)
+        if len(parts) != 2:
+            return None, "Lütfen 'Sanatçı Şarkı' formatında yazın. Örnek: 'Zamiq Kaman'"
+        
+        artist, title = parts
+        
+        logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
+        
+        # tidal-dl search komutunu çalıştır
+        search_cmd = f"tidal-dl -s \"{artist} {title}\""
+        process = subprocess.Popen(search_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if stdout:
+            output = stdout.decode()
+            logger.info(f"Arama sonucu:\n{output}")
+            
+            # URL'yi bul
+            url_match = re.search(r'(https://tidal.com/track/\d+)', output)
+            if url_match:
+                track_url = url_match.group(1)
+                logger.info(f"Şarkı URL'si bulundu: {track_url}")
+                return track_url, None
+        
+        return None, "Şarkı Tidal'da bulunamadı."
+        
+    except Exception as e:
+        logger.error(f"Şarkı arama hatası: {str(e)}")
+        return None, f"Arama sırasında hata oluştu: {str(e)}"
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"Yeni kullanıcı başladı: {user.first_name} (ID: {user.id})")
     await update.message.reply_text(
-        "Merhaba! Müzik indirmek için bana bir Tidal şarkı linki gönderin.\n"
-        "Örnek: https://tidal.com/track/12345678"
+        "Merhaba! Müzik indirmek için:\n"
+        "1. Tidal şarkı linki gönderin\n"
+        "2. Veya 'Sanatçı Şarkı' formatında yazın\n\n"
+        "Örnekler:\n"
+        "- https://tidal.com/track/12345678\n"
+        "- Zamiq Kaman"
     )
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -89,13 +129,17 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.message.chat_id
     user = update.effective_user
     
-    logger.info(f"İndirme isteği: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
+    logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
-        logger.warning(f"Geçersiz URL isteği: {url} (Kullanıcı: {user.first_name})")
-        await update.message.reply_text("Lütfen geçerli bir Tidal linki gönderin!")
-        return
+        # URL değilse, şarkı araması yap
+        track_url, error = await search_tidal_track(url)
+        if error:
+            await update.message.reply_text(error)
+            return
+        url = track_url
+        await update.message.reply_text(f"Şarkı bulundu: {url}\nİndirme başlıyor...")
     
     try:
         # Track ID'yi URL'den çıkar
