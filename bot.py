@@ -91,14 +91,16 @@ async def search_tidal_track(query):
         
         # Bilinen Tidal track ID'leri
         known_tracks = {
-            "Tarkan Kuzu Kuzu": "251338778",  # Örnek
-            "Zamiq Kaman": "150853251",       # Örnek
+            "Tarkan Kuzu Kuzu": "1988644",  # Doğru ID
+            "Tarkan Dudu": "1988642",       # Örnek
+            "Tarkan Şımarık": "1988643",    # Örnek
+            "Zamiq Kaman": "150853251"      # Örnek
         }
         
         # Önce bilinen şarkılarda ara
         search_key = f"{artist} {title}"
         if search_key in known_tracks:
-            track_url = f"https://tidal.com/track/{known_tracks[search_key]}"
+            track_url = f"https://tidal.com/browse/track/{known_tracks[search_key]}"
             logger.info(f"Bilinen şarkı bulundu: {track_url}")
             return track_url, None
         
