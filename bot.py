@@ -87,51 +87,53 @@ async def search_tidal_track(query):
             return None, "Lütfen 'Sanatçı Şarkı' formatında yazın. Örnek: 'Zamiq Kaman'"
         
         artist, title = parts
-        
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
-        # Tidal API'ye istek at
-        headers = {
-            'x-tidal-token': TIDAL_API_TOKEN
-        }
+        # Tidal web sitesinde arama yap
+        search_query = f"{artist} {title}".replace(' ', '%20')
+        search_url = f"https://tidal.com/search/track?q={search_query}"
         
-        search_url = f"https://api.tidal.com/v1/search/tracks"
-        params = {
-            'query': f"{artist} {title}",
-            'limit': 1,
-            'countryCode': 'TR'
-        }
+        # Önce arama sayfasından indirmeyi dene
+        logger.info(f"Arama URL'si: {search_url}")
+        download_cmd = f"tidal-dl -l \"{search_url}\""
+        process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
         
-        response = requests.get(search_url, headers=headers, params=params)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if data.get('items') and len(data['items']) > 0:
-                track = data['items'][0]
-                track_id = track['id']
+        if stdout:
+            output = stdout.decode()
+            logger.info(f"tidal-dl çıktısı:\n{output}")
+            
+            # Track ID'yi bul
+            id_match = re.search(r'track/(\d+)', output)
+            if id_match:
+                track_id = id_match.group(1)
                 track_url = f"https://tidal.com/track/{track_id}"
-                logger.info(f"Şarkı bulundu: {track['title']} - {track['artist']['name']}")
+                logger.info(f"Şarkı URL'si bulundu: {track_url}")
                 return track_url, None
-            else:
-                # API araması başarısız olursa tidal-dl ile dene
-                logger.info("API araması sonuç vermedi, tidal-dl ile deneniyor...")
-                download_cmd = f"tidal-dl -l \"tidal.com/search/track?q={artist}%20{title}\""
-                process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
-                
-                if stdout:
-                    output = stdout.decode()
-                    # URL'yi bul
-                    url_match = re.search(r'(https://tidal.com/track/\d+)', output)
-                    if url_match:
-                        track_url = url_match.group(1)
-                        logger.info(f"Şarkı URL'si bulundu: {track_url}")
-                        return track_url, None
-                
-                return None, "Şarkı Tidal'da bulunamadı."
-        else:
-            logger.error(f"API Hatası: {response.status_code} - {response.text}")
-            return None, "Tidal API hatası oluştu."
+        
+        if stderr:
+            logger.error(f"tidal-dl hatası:\n{stderr.decode()}")
+        
+        # Alternatif olarak browse sayfasını dene
+        browse_url = f"https://tidal.com/browse/track?q={search_query}"
+        logger.info(f"Alternatif arama URL'si: {browse_url}")
+        download_cmd = f"tidal-dl -l \"{browse_url}\""
+        process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if stdout:
+            output = stdout.decode()
+            logger.info(f"tidal-dl çıktısı (alternatif):\n{output}")
+            
+            # Track ID'yi bul
+            id_match = re.search(r'track/(\d+)', output)
+            if id_match:
+                track_id = id_match.group(1)
+                track_url = f"https://tidal.com/track/{track_id}"
+                logger.info(f"Şarkı URL'si bulundu (alternatif): {track_url}")
+                return track_url, None
+        
+        return None, "Şarkı Tidal'da bulunamadı. Lütfen şarkı adını ve sanatçıyı kontrol edin."
         
     except Exception as e:
         logger.error(f"Şarkı arama hatası: {str(e)}")
