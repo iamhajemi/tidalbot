@@ -91,9 +91,13 @@ async def search_tidal_track(query):
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
         # tidal-dl search komutunu çalıştır
-        search_cmd = f"tidal-dl -s \"{artist} {title}\""
+        search_cmd = f"tidal-dl --search \"{artist} {title}\""
+        logger.info(f"Arama komutu: {search_cmd}")
         process = subprocess.Popen(search_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
+        
+        if stderr:
+            logger.error(f"Arama hatası:\n{stderr.decode()}")
         
         if stdout:
             output = stdout.decode()
@@ -104,6 +108,14 @@ async def search_tidal_track(query):
             if url_match:
                 track_url = url_match.group(1)
                 logger.info(f"Şarkı URL'si bulundu: {track_url}")
+                return track_url, None
+            
+            # ID'yi bul (URL bulunamazsa)
+            id_match = re.search(r'Track ID: (\d+)', output)
+            if id_match:
+                track_id = id_match.group(1)
+                track_url = f"https://tidal.com/track/{track_id}"
+                logger.info(f"Track ID bulundu, URL oluşturuldu: {track_url}")
                 return track_url, None
         
         return None, "Şarkı Tidal'da bulunamadı."
