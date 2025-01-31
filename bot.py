@@ -155,13 +155,21 @@ async def search_tidal_track(query):
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"Yeni kullanıcı başladı: {user.first_name} (ID: {user.id})")
+    
+    # Örnek arama butonu ekle
+    keyboard = [
+        [InlineKeyboardButton("🔍 Örnek Arama: Tarkan Kuzu Kuzu", callback_data="tidal_search:Tarkan Kuzu Kuzu")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
     await update.message.reply_text(
         "Merhaba! Müzik indirmek için:\n"
         "1. Tidal şarkı linki gönderin\n"
-        "2. Veya 'Sanatçı Şarkı' formatında yazın\n\n"
+        "2. Veya şarkı adını yazın\n\n"
         "Örnekler:\n"
         "- https://tidal.com/track/12345678\n"
-        "- Zamiq Kaman"
+        "- Tarkan Kuzu Kuzu",
+        reply_markup=reply_markup
     )
 
 async def search_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -205,6 +213,26 @@ async def back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=reply_markup
     )
 
+async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Yardım butonuna tıklandığında"""
+    query = update.callback_query
+    await query.answer()
+    
+    keyboard = [
+        [InlineKeyboardButton("⬅️ Geri", callback_data="back:help")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text="📖 Nasıl Kullanılır?\n\n"
+             "1️⃣ Şarkı adını yazın (örnek: Tarkan Kuzu Kuzu)\n"
+             "2️⃣ '🔍 Tidal'da Ara' butonuna tıklayın\n"
+             "3️⃣ Açılan Tidal sayfasından şarkıyı bulun\n"
+             "4️⃣ Şarkının linkini kopyalayıp buraya gönderin\n\n"
+             "🔗 Örnek link: https://tidal.com/track/1988644",
+        reply_markup=reply_markup
+    )
+
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -216,12 +244,14 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not 'tidal.com' in url:
         # Arama butonu ekle
         keyboard = [
-            [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{url}")]
+            [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{url}")],
+            [InlineKeyboardButton("💡 Nasıl Kullanılır?", callback_data="help")]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
-            f"🎵 {url}\n\nTidal'da aramak için butona tıklayın:",
+            f"🎵 Aranan: {url}\n\n"
+            f"👉 Tidal'da aramak için butona tıklayın",
             reply_markup=reply_markup
         )
         return
@@ -364,6 +394,7 @@ def main():
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_handler(CallbackQueryHandler(search_button, pattern="^tidal_search:"))
     application.add_handler(CallbackQueryHandler(back_button, pattern="^back:"))
+    application.add_handler(CallbackQueryHandler(help_button, pattern="^help"))
     application.add_error_handler(error_handler)
     
     logger.info("Bot hazır, çalışmaya başlıyor...")
