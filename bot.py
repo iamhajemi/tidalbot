@@ -91,29 +91,68 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # İndirme klasörünü oluştur
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
+        logger.info(f"İndirme klasörü: {download_path}")
         
         # tidal-dl komutunu çalıştır
         logger.info(f"İndirme başlatılıyor: {url}")
         download_cmd = f"tidal-dl -l {url} -o \"{download_path}\""
+        logger.info(f"Çalıştırılan komut: {download_cmd}")
         process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
+        # tidal-dl çıktısını logla
+        if stdout:
+            logger.info(f"tidal-dl stdout:\n{stdout.decode()}")
+        if stderr:
+            logger.info(f"tidal-dl stderr:\n{stderr.decode()}")
+        
         if process.returncode != 0:
             error_msg = stderr.decode()
-            logger.error(f"İndirme hatası: {error_msg}")
+            logger.error(f"İndirme hatası (kod: {process.returncode}): {error_msg}")
             await update.message.reply_text(f"İndirme hatası: {error_msg}")
             return
         
         logger.info("İndirme tamamlandı, dosya aranıyor...")
+        logger.info(f"Mevcut çalışma dizini: {os.getcwd()}")
+        logger.info(f"Downloads klasörü tam yolu: {os.path.abspath(download_path)}")
+        
+        # Dosya araması öncesi klasör içeriğini kontrol et
+        logger.info("=== Klasör içeriği detayları ===")
+        for root, dirs, files in os.walk(download_path):
+            logger.info(f"\nKlasör: {root}")
+            if dirs:
+                logger.info(f"Alt klasörler: {', '.join(dirs)}")
+            if files:
+                logger.info(f"Dosyalar: {', '.join(files)}")
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
+                    logger.info(f"- {file}: {file_size:.2f} MB")
+            else:
+                logger.info("Bu klasörde dosya yok")
+        logger.info("=== Klasör içeriği sonu ===")
+        
         await asyncio.sleep(2)
         
         # Tüm alt klasörleri dahil ederek M4A dosyalarını bul
         audio_files = []
+        logger.info("\nM4A dosyaları aranıyor...")
         for root, dirs, files in os.walk(download_path):
             for file in files:
                 if file.endswith('.m4a'):
                     full_path = os.path.join(root, file)
                     audio_files.append(full_path)
+                    logger.info(f"M4A dosyası bulundu: {full_path}")
+        
+        if not audio_files:
+            logger.warning(f"Hiç M4A dosyası bulunamadı! Aranan klasör: {download_path}")
+            logger.info("Desteklenen tüm ses dosyaları aranıyor...")
+            for root, dirs, files in os.walk(download_path):
+                for file in files:
+                    if file.endswith(('.m4a', '.mp3', '.flac', '.wav')):
+                        logger.info(f"Ses dosyası bulundu: {os.path.join(root, file)}")
+            await update.message.reply_text("İndirilen dosya bulunamadı!")
+            return
         
         if audio_files:
             newest_file = max(audio_files, key=os.path.getctime)
