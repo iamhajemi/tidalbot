@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 import os
 import subprocess
 import re
@@ -164,6 +164,47 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "- Zamiq Kaman"
     )
 
+async def search_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tidal'da ara butonuna tıklandığında"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Callback data'dan arama terimini al (tidal_search:ARAMA_TERİMİ)
+    search_term = query.data.split(':')[1]
+    search_url = f"https://tidal.com/search?q={search_term.replace(' ', '+')}"
+    
+    keyboard = [
+        [InlineKeyboardButton("🔍 Tidal'da Aç", url=search_url)],
+        [InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text=f"🎵 Aranan: {search_term}\n\n"
+             f"1. Tidal'da Aç butonuna tıklayın\n"
+             f"2. Şarkıyı bulun\n"
+             f"3. Şarkı linkini buraya gönderin",
+        reply_markup=reply_markup
+    )
+
+async def back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Geri butonuna tıklandığında"""
+    query = update.callback_query
+    await query.answer()
+    
+    # Callback data'dan arama terimini al (back:ARAMA_TERİMİ)
+    search_term = query.data.split(':')[1]
+    
+    keyboard = [
+        [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{search_term}")]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    await query.edit_message_text(
+        text=f"🎵 {search_term}\n\nTidal'da aramak için butona tıklayın:",
+        reply_markup=reply_markup
+    )
+
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -173,13 +214,17 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
-        # URL değilse, şarkı araması yap
-        track_url, error = await search_tidal_track(url)
-        if error:
-            await update.message.reply_text(error)
-            return
-        url = track_url
-        await update.message.reply_text(f"Şarkı bulundu: {url}\nİndirme başlıyor...")
+        # Arama butonu ekle
+        keyboard = [
+            [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{url}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            f"🎵 {url}\n\nTidal'da aramak için butona tıklayın:",
+            reply_markup=reply_markup
+        )
+        return
     
     try:
         # Track ID'yi URL'den çıkar
@@ -317,6 +362,8 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
+    application.add_handler(CallbackQueryHandler(search_button, pattern="^tidal_search:"))
+    application.add_handler(CallbackQueryHandler(back_button, pattern="^back:"))
     application.add_error_handler(error_handler)
     
     logger.info("Bot hazır, çalışmaya başlıyor...")
