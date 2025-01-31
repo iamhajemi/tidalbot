@@ -4,8 +4,19 @@ import os
 import subprocess
 import re
 import asyncio
+import shutil
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
+
+def setup_tidal():
+    # Tidal yapılandırma klasörünü oluştur
+    config_dir = os.path.expanduser('~/.tidal-dl')
+    os.makedirs(config_dir, exist_ok=True)
+    
+    # Varsayılan yapılandırmayı kopyala
+    default_config = os.path.join(os.getcwd(), 'default', 'tidal-dl.token.json')
+    if os.path.exists(default_config):
+        shutil.copy2(default_config, os.path.join(config_dir, 'tidal-dl.token.json'))
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -87,6 +98,9 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
 
 def main():
+    # Tidal yapılandırmasını ayarla
+    setup_tidal()
+    
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     application.add_handler(CommandHandler("start", start))
