@@ -1,72 +1,90 @@
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
-import yt_dlp
 import os
+import subprocess
+import re
+import asyncio
 
-TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN", "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc")
+TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "Merhaba! Müzik indirmek için bana bir YouTube linki gönder."
+        "Merhaba! Müzik indirmek için bana bir Tidal şarkı linki gönderin.\n"
+        "Örnek: https://tidal.com/track/12345678"
     )
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
     
-    # URL kontrolü
-    if not ('youtube.com' in url or 'youtu.be' in url):
-        await update.message.reply_text("Lütfen geçerli bir YouTube linki gönderin!")
+    # Tidal URL kontrolü
+    if not 'tidal.com' in url:
+        await update.message.reply_text("Lütfen geçerli bir Tidal linki gönderin!")
         return
     
-    await update.message.reply_text("İndirme başlıyor...")
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '320',
-        }],
-        'outtmpl': f'downloads/%(title)s.%(ext)s',
-        'ignoreerrors': True,
-        'no_warnings': True,
-        'quiet': True,
-        'extract_flat': False,
-        'force_generic_extractor': False
-    }
-    
     try:
-        # İndirme klasörünü oluştur
-        os.makedirs('downloads', exist_ok=True)
+        # Track ID'yi URL'den çıkar
+        track_id = re.search(r'track/(\d+)', url).group(1)
         
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=True)
-            title = info['title']
-            file_path = f"downloads/{title}.mp3"
+        await update.message.reply_text("İndirme başlıyor...")
+        
+        # İndirme klasörünü oluştur
+        download_path = os.path.join(os.getcwd(), "downloads")
+        os.makedirs(download_path, exist_ok=True)
+        
+        # tidal-dl komutunu çalıştır
+        download_cmd = f"tidal-dl -l {url} -o \"{download_path}\""
+        process = subprocess.Popen(download_cmd, shell=True)
+        process.wait()
+        
+        await asyncio.sleep(2)
+        
+        # Tüm alt klasörleri dahil ederek M4A dosyalarını bul
+        audio_files = []
+        for root, dirs, files in os.walk(download_path):
+            for file in files:
+                if file.endswith('.m4a'):
+                    full_path = os.path.join(root, file)
+                    audio_files.append(full_path)
+        
+        if audio_files:
+            newest_file = max(audio_files, key=os.path.getctime)
             
             await update.message.reply_text("Dosya yükleniyor...")
             
-            # Dosyayı Telegram'a gönder
-            with open(file_path, 'rb') as audio_file:
-                await context.bot.send_audio(
-                    chat_id=chat_id,
-                    audio=audio_file,
-                    title=title,
-                    performer="YouTube Music Bot"
-                )
-            
-            # Geçici dosyayı sil
-            os.remove(file_path)
+            try:
+                # Dosyayı Telegram'a gönder
+                with open(newest_file, 'rb') as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=os.path.splitext(os.path.basename(newest_file))[0],
+                        performer="Tidal Music Bot"
+                    )
+                
+                # Başarılı indirme sonrası dosyayı ve klasörünü sil
+                try:
+                    os.remove(newest_file)
+                    # Boş klasörleri temizle
+                    for root, dirs, files in os.walk(download_path, topdown=False):
+                        for name in dirs:
+                            try:
+                                os.rmdir(os.path.join(root, name))
+                            except:
+                                pass
+                except:
+                    pass
+                    
+            except Exception as send_error:
+                await update.message.reply_text(f"Dosya gönderme hatası: {str(send_error)}")
+        else:
+            await update.message.reply_text("İndirilen dosya bulunamadı!")
             
     except Exception as e:
         await update.message.reply_text(f"Hata oluştu: {str(e)}")
-        # Hata durumunda geçici dosyaları temizle
-        if 'file_path' in locals() and os.path.exists(file_path):
-            os.remove(file_path)
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir YouTube linki gönderdiğinizden emin olun.")
+    await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
 
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
