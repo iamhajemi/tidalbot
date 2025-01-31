@@ -115,112 +115,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     logger.info(f"Yeni kullanıcı başladı: {user.first_name} (ID: {user.id})")
     
-    # Örnek arama butonu ekle
-    keyboard = [
-        [InlineKeyboardButton("🔍 Örnek Arama: Tarkan Kuzu Kuzu", callback_data="tidal_search:Tarkan Kuzu Kuzu")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
     await update.message.reply_text(
         "Merhaba! Müzik indirmek için:\n"
-        "1. Tidal şarkı linki gönderin\n"
-        "2. Veya şarkı adını yazın\n\n"
+        "1. Tidal şarkı linki gönderin veya\n"
+        "2. Şarkı adını yazın\n\n"
         "Örnekler:\n"
         "- https://tidal.com/track/12345678\n"
-        "- Tarkan Kuzu Kuzu",
-        reply_markup=reply_markup
-    )
-
-async def search_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tidal'da ara butonuna tıklandığında"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Callback data'dan arama terimini al (tidal_search:ARAMA_TERİMİ)
-    search_term = query.data.split(':')[1]
-    
-    try:
-        # Tidal oturumu başlat
-        session = tidalapi.Session()
-        session.login_oauth_simple()
-        
-        # Şarkıyı ara
-        search_results = session.search(search_term, models=[tidalapi.media.Track])
-        tracks = search_results.tracks[:5]  # İlk 5 sonucu al
-        
-        if not tracks:
-            keyboard = [[InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await query.edit_message_text(
-                text="❌ Şarkı bulunamadı. Lütfen başka bir arama yapın.",
-                reply_markup=reply_markup
-            )
-            return
-        
-        # Her şarkı için buton oluştur
-        keyboard = []
-        for track in tracks:
-            track_url = f"https://tidal.com/track/{track.id}"
-            button_text = f"🎵 {track.artist.name} - {track.name}"
-            keyboard.append([InlineKeyboardButton(button_text, url=track_url)])
-        
-        # Geri butonu ekle
-        keyboard.append([InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")])
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        await query.edit_message_text(
-            text=f"🔍 '{search_term}' için sonuçlar:\n\n"
-                 "1. İstediğiniz şarkıya tıklayın\n"
-                 "2. Açılan Tidal sayfasından şarkı linkini kopyalayın\n"
-                 "3. Linki buraya gönderin",
-            reply_markup=reply_markup
-        )
-        
-    except Exception as e:
-        logger.error(f"Arama hatası: {str(e)}")
-        keyboard = [[InlineKeyboardButton("⬅️ Geri", callback_data=f"back:{search_term}")]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            text=f"❌ Arama sırasında hata oluştu: {str(e)}",
-            reply_markup=reply_markup
-        )
-
-async def back_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Geri butonuna tıklandığında"""
-    query = update.callback_query
-    await query.answer()
-    
-    # Callback data'dan arama terimini al (back:ARAMA_TERİMİ)
-    search_term = query.data.split(':')[1]
-    
-    keyboard = [
-        [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{search_term}")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=f"🎵 {search_term}\n\nTidal'da aramak için butona tıklayın:",
-        reply_markup=reply_markup
-    )
-
-async def help_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Yardım butonuna tıklandığında"""
-    query = update.callback_query
-    await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("⬅️ Geri", callback_data="back:help")]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text="📖 Nasıl Kullanılır?\n\n"
-             "1️⃣ Şarkı adını yazın (örnek: Tarkan Kuzu Kuzu)\n"
-             "2️⃣ '🔍 Tidal'da Ara' butonuna tıklayın\n"
-             "3️⃣ Açılan Tidal sayfasından şarkıyı bulun\n"
-             "4️⃣ Şarkının linkini kopyalayıp buraya gönderin\n\n"
-             "🔗 Örnek link: https://tidal.com/track/1988644",
-        reply_markup=reply_markup
+        "- Tarkan Kuzu Kuzu"
     )
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -232,19 +133,38 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
-        # Arama butonu ekle
-        keyboard = [
-            [InlineKeyboardButton("🔍 Tidal'da Ara", callback_data=f"tidal_search:{url}")],
-            [InlineKeyboardButton("💡 Nasıl Kullanılır?", callback_data="help")]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        await update.message.reply_text("🔍 Şarkı aranıyor...")
         
-        await update.message.reply_text(
-            f"🎵 Aranan: {url}\n\n"
-            f"👉 Tidal'da aramak için butona tıklayın",
-            reply_markup=reply_markup
-        )
-        return
+        try:
+            # Tidal oturumu başlat
+            session = tidalapi.Session()
+            session.login_oauth_simple()
+            
+            # Şarkıyı ara
+            search_results = session.search(url, models=[tidalapi.media.Track])
+            tracks = search_results.tracks[:1]  # Sadece ilk sonucu al
+            
+            if not tracks:
+                await update.message.reply_text(
+                    "❌ Şarkı bulunamadı. Lütfen:\n"
+                    "1. Şarkı adını kontrol edin\n"
+                    "2. Sanatçı adıyla birlikte deneyin\n"
+                    "3. Direkt Tidal linkini gönderin"
+                )
+                return
+            
+            # İlk sonucu kullan
+            track = tracks[0]
+            url = f"https://tidal.com/track/{track.id}"
+            await update.message.reply_text(
+                f"✅ Şarkı bulundu!\n"
+                f"🎵 {track.artist.name} - {track.name}\n\n"
+                f"⬇️ İndirme başlıyor..."
+            )
+        except Exception as e:
+            logger.error(f"Arama hatası: {str(e)}")
+            await update.message.reply_text(f"❌ Arama sırasında hata oluştu: {str(e)}")
+            return
     
     try:
         # Track ID'yi URL'den çıkar
@@ -382,9 +302,6 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
-    application.add_handler(CallbackQueryHandler(search_button, pattern="^tidal_search:"))
-    application.add_handler(CallbackQueryHandler(back_button, pattern="^back:"))
-    application.add_handler(CallbackQueryHandler(help_button, pattern="^help"))
     application.add_error_handler(error_handler)
     
     logger.info("Bot hazır, çalışmaya başlıyor...")
