@@ -5,6 +5,7 @@ import subprocess
 import re
 import asyncio
 import shutil
+import json
 
 TELEGRAM_TOKEN = "8161571681:AAEpj7x4jiNA3ATMg3ajQMEmkcMp4rPYJHc"
 
@@ -13,10 +14,41 @@ def setup_tidal():
     config_dir = os.path.expanduser('~/.tidal-dl')
     os.makedirs(config_dir, exist_ok=True)
     
-    # Varsayılan yapılandırmayı kopyala
-    default_config = os.path.join(os.getcwd(), 'default', 'tidal-dl.token.json')
-    if os.path.exists(default_config):
-        shutil.copy2(default_config, os.path.join(config_dir, 'tidal-dl.token.json'))
+    # Tidal yapılandırma dosyasını oluştur
+    config = {
+        "loginByWeb": False,
+        "apiKeyIndex": 4,
+        "addExplicitTag": True,
+        "addHyphen": True,
+        "addYear": False,
+        "includeEP": True,
+        "saveCovers": True,
+        "language": "TR",
+        "lyricFile": False,
+        "multiThread": True,
+        "downloadPath": "./downloads",
+        "quality": "Master",
+        "usePlaylistFolder": True,
+        "albumFolderFormat": "{ArtistName}/{Flag} {AlbumTitle} [{AlbumID}] [{AlbumYear}]",
+        "trackFileFormat": "{TrackNumber}. {ArtistName} - {TrackTitle}{ExplicitFlag}",
+        "videoFileFormat": "{ArtistName} - {VideoTitle}{ExplicitFlag}",
+        "checkExist": True,
+        "artistBeforeTitle": False,
+        "showProgress": True,
+        "showTrackInfo": True,
+        "saveAlbumInfo": False,
+        "lyricProvider": "Local",
+        "apiKeys": {
+            "platform": "Android",
+            "formats": "AAC_320,AAC_96,AAC_160,AAC_PLUS,MP3_320,MP3_128,MP3_192,MP3_256",
+            "clientId": "zU4XHVVkc2tDPo4t",
+            "clientSecret": "VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4="
+        }
+    }
+    
+    config_file = os.path.join(config_dir, 'tidal-dl.json')
+    with open(config_file, 'w') as f:
+        json.dump(config, f, indent=4)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -45,8 +77,12 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # tidal-dl komutunu çalıştır
         download_cmd = f"tidal-dl -l {url} -o \"{download_path}\""
-        process = subprocess.Popen(download_cmd, shell=True)
-        process.wait()
+        process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            await update.message.reply_text(f"İndirme hatası: {stderr.decode()}")
+            return
         
         await asyncio.sleep(2)
         
@@ -95,7 +131,10 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"Hata oluştu: {str(e)}")
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
+    if update and update.message:
+        await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
+    else:
+        print(f"Hata oluştu: {context.error}")
 
 def main():
     # Tidal yapılandırmasını ayarla
