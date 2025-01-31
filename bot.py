@@ -89,63 +89,16 @@ async def search_tidal_track(query):
         artist, title = parts
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
-        # Bilinen Tidal track ID'leri
-        known_tracks = {
-            "Tarkan Kuzu Kuzu": "1988644",  # Doğru ID
-            "Tarkan Dudu": "1988642",       # Örnek
-            "Tarkan Şımarık": "1988643",    # Örnek
-            "Zamiq Kaman": "150853251"      # Örnek
-        }
+        # Tidal web sitesinde arama yap
+        search_url = f"https://tidal.com/search?q={artist.replace(' ', '+')}+{title.replace(' ', '+')}"
         
-        # Önce bilinen şarkılarda ara
-        search_key = f"{artist} {title}"
-        if search_key in known_tracks:
-            track_url = f"https://tidal.com/browse/track/{known_tracks[search_key]}"
-            logger.info(f"Bilinen şarkı bulundu: {track_url}")
-            return track_url, None
-        
-        # Farklı URL formatlarını dene
-        search_urls = [
-            f"https://tidal.com/browse/track/{artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}",
-            f"https://tidal.com/search/track/{artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}",
-            f"https://tidal.com/search?q={artist.replace(' ', '+')}+{title.replace(' ', '+')}",
-            f"https://listen.tidal.com/search?q={artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}"
-        ]
-        
-        for url in search_urls:
-            logger.info(f"URL deneniyor: {url}")
-            try:
-                # Web sitesinden içeriği al
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-                response = requests.get(url, headers=headers, timeout=10)
-                
-                if response.status_code == 200:
-                    content = response.text
-                    # Track ID'yi bul
-                    matches = re.findall(r'track[/"](\d+)', content)
-                    for track_id in matches:
-                        track_url = f"https://tidal.com/track/{track_id}"
-                        # Track'i doğrula
-                        verify_cmd = f"tidal-dl -l {track_url}"
-                        process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        stdout, stderr = process.communicate()
-                        
-                        if stdout and 'ERROR' not in stdout.decode().upper():
-                            logger.info(f"Şarkı URL'si bulundu: {track_url}")
-                            return track_url, None
-            except Exception as e:
-                logger.error(f"URL hatası ({url}): {str(e)}")
-                continue
-        
-        # Hiçbir şey bulunamadıysa, kullanıcıdan Tidal linki isteyelim
+        # Kullanıcıya arama linkini gönder
         return None, (
-            "Şarkı Tidal'da bulunamadı.\n\n"
-            "Lütfen şu adımları izleyin:\n"
-            "1. Tidal web sitesine gidin (tidal.com)\n"
-            "2. Şarkıyı arayın\n"
-            "3. Şarkının linkini kopyalayıp buraya gönderin"
+            f"Şarkıyı indirmek için şu adımları izleyin:\n\n"
+            f"1. Bu linke tıklayın: {search_url}\n"
+            f"2. Şarkıyı bulun ve üzerine tıklayın\n"
+            f"3. Açılan sayfadaki linki kopyalayıp buraya gönderin\n\n"
+            f"Örnek link: https://tidal.com/track/1988644"
         )
         
     except Exception as e:
