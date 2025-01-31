@@ -89,17 +89,61 @@ async def search_tidal_track(query):
         artist, title = parts
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
-        # Tidal web sitesinde arama yap
-        search_url = f"https://tidal.com/search?q={artist.replace(' ', '+')}+{title.replace(' ', '+')}"
+        # Tidal API'ye istek at
+        headers = {
+            'authority': 'listen.tidal.com',
+            'accept': 'application/json',
+            'accept-language': 'tr-TR,tr;q=0.9',
+            'authorization': 'Bearer zU4XHVVkc2tDPo4t',
+            'origin': 'https://listen.tidal.com',
+            'referer': 'https://listen.tidal.com/',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
         
-        # Kullanıcıya arama linkini gönder
-        return None, (
-            f"Şarkıyı indirmek için şu adımları izleyin:\n\n"
-            f"1. Bu linke tıklayın: {search_url}\n"
-            f"2. Şarkıyı bulun ve üzerine tıklayın\n"
-            f"3. Açılan sayfadaki linki kopyalayıp buraya gönderin\n\n"
-            f"Örnek link: https://tidal.com/track/1988644"
-        )
+        # Arama URL'si
+        search_url = f"https://listen.tidal.com/v1/search?query={artist}%20{title}&limit=25&offset=0&types=TRACKS&countryCode=TR"
+        
+        response = requests.get(search_url, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'tracks' in data and 'items' in data['tracks'] and len(data['tracks']['items']) > 0:
+                # İlk sonucu al
+                track = data['tracks']['items'][0]
+                track_url = f"https://tidal.com/browse/track/{track['id']}"
+                
+                # Track'i doğrula
+                verify_cmd = f"tidal-dl -l {track_url}"
+                process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = process.communicate()
+                
+                if stdout and 'ERROR' not in stdout.decode().upper():
+                    logger.info(f"Şarkı bulundu: {track['title']} - {track['artist']['name']}")
+                    return track_url, None
+        
+        # Alternatif arama yöntemi
+        search_url = f"https://api.tidal.com/v1/search/tracks?query={artist}%20{title}&limit=25&countryCode=TR"
+        headers['authorization'] = 'Bearer VJKhDFqJPqvsPVNBV6ukXTJmwlvbttP7wlMlrc72se4='
+        
+        response = requests.get(search_url, headers=headers)
+        
+        if response.status_code == 200:
+            data = response.json()
+            if 'items' in data and len(data['items']) > 0:
+                # İlk sonucu al
+                track = data['items'][0]
+                track_url = f"https://tidal.com/browse/track/{track['id']}"
+                
+                # Track'i doğrula
+                verify_cmd = f"tidal-dl -l {track_url}"
+                process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                stdout, stderr = process.communicate()
+                
+                if stdout and 'ERROR' not in stdout.decode().upper():
+                    logger.info(f"Şarkı bulundu: {track['title']} - {track['artist']['name']}")
+                    return track_url, None
+        
+        return None, "Şarkı Tidal'da bulunamadı. Lütfen şarkı adını ve sanatçıyı kontrol edin veya direkt Tidal linkini gönderin."
         
     except Exception as e:
         logger.error(f"Şarkı arama hatası: {str(e)}")
