@@ -89,51 +89,70 @@ async def search_tidal_track(query):
         artist, title = parts
         logger.info(f"Şarkı aranıyor - Sanatçı: {artist}, Şarkı: {title}")
         
-        # Tidal web sitesinde arama yap
-        search_query = f"{artist} {title}".replace(' ', '%20')
-        search_url = f"https://tidal.com/search/track?q={search_query}"
+        # Farklı arama yöntemleri
+        search_methods = [
+            # 1. Direkt arama URL'si
+            f"https://tidal.com/search?q={artist.replace(' ', '+')}+{title.replace(' ', '+')}",
+            # 2. Browse URL'si
+            f"https://tidal.com/browse/track?q={artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}",
+            # 3. Track search URL'si
+            f"https://tidal.com/search/tracks?q={artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}",
+            # 4. Alternatif arama URL'si
+            f"https://listen.tidal.com/search?q={artist.replace(' ', '%20')}%20{title.replace(' ', '%20')}"
+        ]
         
-        # Önce arama sayfasından indirmeyi dene
-        logger.info(f"Arama URL'si: {search_url}")
-        download_cmd = f"tidal-dl -l \"{search_url}\""
+        for search_url in search_methods:
+            logger.info(f"Denenen URL: {search_url}")
+            
+            # tidal-dl ile indirmeyi dene
+            download_cmd = f"tidal-dl -l \"{search_url}\""
+            process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+            
+            if stdout:
+                output = stdout.decode()
+                logger.info(f"tidal-dl çıktısı:\n{output}")
+                
+                # Track ID'yi bul
+                id_matches = re.findall(r'track/(\d+)', output)
+                for track_id in id_matches:
+                    track_url = f"https://tidal.com/track/{track_id}"
+                    # Track URL'sini doğrula
+                    verify_cmd = f"tidal-dl -l {track_url}"
+                    verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    verify_stdout, verify_stderr = verify_process.communicate()
+                    
+                    if verify_stdout and 'ERROR' not in verify_stdout.decode().upper():
+                        logger.info(f"Geçerli şarkı URL'si bulundu: {track_url}")
+                        return track_url, None
+            
+            if stderr:
+                logger.error(f"tidal-dl hatası:\n{stderr.decode()}")
+            
+            # Kısa bir bekleme ekle
+            await asyncio.sleep(1)
+        
+        # Son bir deneme: Sadece sanatçı adıyla ara
+        final_url = f"https://tidal.com/search/tracks?q={artist.replace(' ', '%20')}"
+        logger.info(f"Son deneme URL'si: {final_url}")
+        download_cmd = f"tidal-dl -l \"{final_url}\""
         process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         
         if stdout:
             output = stdout.decode()
-            logger.info(f"tidal-dl çıktısı:\n{output}")
-            
-            # Track ID'yi bul
-            id_match = re.search(r'track/(\d+)', output)
-            if id_match:
-                track_id = id_match.group(1)
+            id_matches = re.findall(r'track/(\d+)', output)
+            for track_id in id_matches[:5]:  # İlk 5 sonucu kontrol et
                 track_url = f"https://tidal.com/track/{track_id}"
-                logger.info(f"Şarkı URL'si bulundu: {track_url}")
-                return track_url, None
+                verify_cmd = f"tidal-dl -l {track_url}"
+                verify_process = subprocess.Popen(verify_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                verify_stdout, verify_stderr = verify_process.communicate()
+                
+                if verify_stdout and 'ERROR' not in verify_stdout.decode().upper():
+                    logger.info(f"Alternatif şarkı URL'si bulundu: {track_url}")
+                    return track_url, None
         
-        if stderr:
-            logger.error(f"tidal-dl hatası:\n{stderr.decode()}")
-        
-        # Alternatif olarak browse sayfasını dene
-        browse_url = f"https://tidal.com/browse/track?q={search_query}"
-        logger.info(f"Alternatif arama URL'si: {browse_url}")
-        download_cmd = f"tidal-dl -l \"{browse_url}\""
-        process = subprocess.Popen(download_cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        
-        if stdout:
-            output = stdout.decode()
-            logger.info(f"tidal-dl çıktısı (alternatif):\n{output}")
-            
-            # Track ID'yi bul
-            id_match = re.search(r'track/(\d+)', output)
-            if id_match:
-                track_id = id_match.group(1)
-                track_url = f"https://tidal.com/track/{track_id}"
-                logger.info(f"Şarkı URL'si bulundu (alternatif): {track_url}")
-                return track_url, None
-        
-        return None, "Şarkı Tidal'da bulunamadı. Lütfen şarkı adını ve sanatçıyı kontrol edin."
+        return None, "Şarkı Tidal'da bulunamadı. Lütfen şarkı adını ve sanatçıyı kontrol edin veya direkt Tidal linkini gönderin."
         
     except Exception as e:
         logger.error(f"Şarkı arama hatası: {str(e)}")
