@@ -282,6 +282,9 @@ def get_quality_keyboard():
         [
             InlineKeyboardButton("HiFi (FLAC)", callback_data="quality_hifi"),
             InlineKeyboardButton("Master", callback_data="quality_master")
+        ],
+        [
+            InlineKeyboardButton("🎵 YouTube'dan İndir", callback_data="youtube_mode")
         ]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -633,6 +636,139 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.args = [quality]
     await set_quality(update, context)
 
+async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """YouTube'dan müzik indir"""
+    url = update.message.text.strip()
+    chat_id = update.message.chat_id
+    user = update.effective_user
+    
+    logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
+    
+    # İndirme klasörünü temizle
+    clean_downloads()
+    
+    # YouTube URL kontrolü
+    if not ('youtube.com' in url or 'youtu.be' in url):
+        await update.message.reply_text(
+            "❌ Geçerli bir YouTube linki gönderin",
+            reply_markup=get_quality_keyboard()
+        )
+        return
+    
+    try:
+        await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
+        
+        # İndirme klasörünü oluştur
+        download_path = os.path.join(os.getcwd(), "downloads")
+        os.makedirs(download_path, exist_ok=True)
+        
+        # yt-dlp komutunu çalıştır
+        process = subprocess.Popen(
+            [
+                "yt-dlp",
+                "-x",  # Sadece ses
+                "--audio-format", "mp3",  # MP3 formatı
+                "--audio-quality", "0",  # En iyi kalite
+                "-o", os.path.join(download_path, "%(title)s.%(ext)s"),  # Çıktı formatı
+                url
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding='utf-8',
+            errors='ignore'
+        )
+        
+        # Çıktıyı gerçek zamanlı olarak kontrol et
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                output = output.strip()
+                logger.info(output)
+                if "ERROR" in output or "Error" in output:
+                    await update.message.reply_text(f"❌ Hata: {output}")
+        
+        # İşlem tamamlandı, çıktıyı kontrol et
+        stdout, stderr = process.communicate()
+        
+        if process.returncode != 0:
+            logger.error(f"YouTube indirme hatası: {stderr}")
+            await update.message.reply_text("❌ İndirme başarısız")
+            return
+        
+        # İndirme sonrası biraz bekle
+        await asyncio.sleep(3)
+        
+        # İndirilen dosyaları bul
+        all_files = []
+        for file in os.listdir(download_path):
+            if file.endswith('.mp3'):
+                all_files.append(os.path.join(download_path, file))
+        
+        if not all_files:
+            await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+            return
+        
+        # Her dosyayı gönder
+        for file_path in all_files:
+            try:
+                # Dosya bilgilerini al
+                file_name = os.path.basename(file_path)
+                title = os.path.splitext(file_name)[0]
+                
+                # Dosyayı Telegram'a gönder
+                with open(file_path, 'rb') as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=title,
+                        performer="YouTube",
+                        caption=f"🎵 {title}\n📺 YouTube"
+                    )
+            except Exception as e:
+                logger.error(f"Dosya gönderme hatası: {str(e)}")
+                continue
+        
+        await update.message.reply_text("✅ YouTube indirme tamamlandı!")
+        clean_downloads()
+        
+    except Exception as e:
+        logger.error(f"Hata: {str(e)}")
+        await update.message.reply_text("❌ İşlem başarısız")
+        clean_downloads()
+
+async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mod seçimi butonlarını işle"""
+    query = update.callback_query
+    await query.answer()
+    
+    if query.data == "youtube_mode":
+        # YouTube moduna geç
+        context.user_data['mode'] = 'youtube'
+        await query.message.edit_text(
+            "🎵 YouTube modu aktif!\n"
+            "YouTube video linki gönderin.",
+            reply_markup=get_quality_keyboard()
+        )
+    else:
+        # Tidal moduna geç (varsayılan)
+        context.user_data['mode'] = 'tidal'
+        await query.message.edit_text(
+            "🎵 Tidal modu aktif!\n"
+            "Tidal linki gönderin.",
+            reply_markup=get_quality_keyboard()
+        )
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gelen linki işle"""
+    mode = context.user_data.get('mode', 'tidal')  # Varsayılan: tidal
+    
+    if mode == 'youtube':
+        await youtube_download(update, context)
+    else:
+        await download_music(update, context)
+
 def main():
     logger.info("Bot başlatılıyor...")
     
@@ -647,7 +783,8 @@ def main():
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("quality", set_quality))
     application.add_handler(CallbackQueryHandler(quality_button, pattern="^quality_"))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
+    application.add_handler(CallbackQueryHandler(mode_button, pattern="^youtube_"))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
     application.add_error_handler(error_handler)
     
     logger.info("Bot hazır, çalışmaya başlıyor...")

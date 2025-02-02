@@ -1,5 +1,7 @@
 python-telegram-bot
 tidal-dl
-beautifulsoup4
 requests
+python-dotenv
+yt-dlp
+beautifulsoup4
 pynput 
