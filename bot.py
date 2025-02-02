@@ -1,5 +1,5 @@
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 import os
 import subprocess
 import re
@@ -272,15 +272,19 @@ async def get_playlist_tracks(playlist_id):
         logger.error(f"Playlist track listesi alınamadı: {str(e)}")
         return []
 
-def get_quality_menu():
-    """Kalite seçenekleri menüsünü döndür"""
-    return (
-        "\n\n📊 Kalite Seçenekleri:\n"
-        "/quality normal - AAC 320kbps\n"
-        "/quality high - MP3 320kbps\n"
-        "/quality hifi - FLAC\n"
-        "/quality master - Master"
-    )
+def get_quality_keyboard():
+    """Kalite seçenekleri için buton menüsü oluştur"""
+    keyboard = [
+        [
+            InlineKeyboardButton("Normal (AAC 320)", callback_data="quality_normal"),
+            InlineKeyboardButton("High (MP3 320)", callback_data="quality_high")
+        ],
+        [
+            InlineKeyboardButton("HiFi (FLAC)", callback_data="quality_hifi"),
+            InlineKeyboardButton("Master", callback_data="quality_master")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -289,8 +293,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Merhaba! Müzik indirmek için:\n\n"
         "1. Tidal şarkı linki gönderin\n"
         "2. Tidal playlist linki gönderin\n"
-        "3. Tidal albüm linki gönderin" + 
-        get_quality_menu()
+        "3. Tidal albüm linki gönderin\n\n"
+        "📊 Kalite seçmek için aşağıdaki butonları kullanın:",
+        reply_markup=get_quality_keyboard()
     )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -304,10 +309,19 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kalite ayarını değiştir"""
-    user_id = update.effective_user.id
+    # Buton tıklaması mı normal komut mu kontrol et
+    if update.callback_query:
+        user_id = update.callback_query.from_user.id
+        message = update.callback_query.message
+    else:
+        user_id = update.effective_user.id
+        message = update.message
     
     if not context.args or context.args[0].lower() not in QUALITY_OPTIONS:
-        await update.message.reply_text("Lütfen kalite seçin:" + get_quality_menu())
+        await message.reply_text(
+            "Lütfen kalite seçin:",
+            reply_markup=get_quality_keyboard()
+        )
         return
     
     quality = context.args[0].lower()
@@ -334,15 +348,20 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
             with open(home_config, 'w') as f:
                 json.dump(config, f, indent=4)
         
-        await update.message.reply_text(
-            f"✅ Kalite ayarı güncellendi: {quality.upper()}\n"
-            f"Yeni kalite: {quality_value}" + 
-            get_quality_menu()
-        )
+        # Mesajı güncelle veya yeni mesaj gönder
+        response_text = f"✅ Kalite ayarı güncellendi: {quality.upper()}\nYeni kalite: {quality_value}"
+        if update.callback_query:
+            await message.edit_text(response_text, reply_markup=get_quality_keyboard())
+        else:
+            await message.reply_text(response_text, reply_markup=get_quality_keyboard())
         
     except Exception as e:
         logger.error(f"Kalite ayarı güncelleme hatası: {str(e)}")
-        await update.message.reply_text("❌ Kalite ayarı güncellenirken hata oluştu" + get_quality_menu())
+        error_text = "❌ Kalite ayarı güncellenirken hata oluştu"
+        if update.callback_query:
+            await message.edit_text(error_text, reply_markup=get_quality_keyboard())
+        else:
+            await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
@@ -633,6 +652,18 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ İşlem başarısız")
         clean_downloads()
 
+async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Buton tıklamalarını işle"""
+    query = update.callback_query
+    await query.answer()  # Butona tıklandığını bildir
+    
+    # Seçilen kaliteyi al
+    quality = query.data.split('_')[1]  # quality_normal -> normal
+    
+    # /quality komutunu çalıştır
+    context.args = [quality]
+    await set_quality(update, context)
+
 def main():
     logger.info("Bot başlatılıyor...")
     
@@ -646,6 +677,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("quality", set_quality))
+    application.add_handler(CallbackQueryHandler(quality_button, pattern="^quality_"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_error_handler(error_handler)
     
