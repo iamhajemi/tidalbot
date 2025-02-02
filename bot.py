@@ -33,7 +33,7 @@ user_quality = {}
 
 # Global değişkenler
 active_downloads = {}  # Aktif indirmeler: {chat_id: True/False}
-download_queue = {}   # İndirme kuyruğu: {chat_id: position}
+download_queue = []   # İndirme kuyruğu: [(chat_id, update, context), ...]
 
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
@@ -374,11 +374,20 @@ async def check_queue(chat_id):
     """Kuyrukta bekleyen indirme var mı kontrol et"""
     if chat_id in active_downloads and active_downloads[chat_id]:
         # Bu kullanıcının zaten aktif bir indirmesi var
-        queue_position = len([pos for pos in active_downloads.values() if pos]) + 1
+        queue_position = len([cid for cid in active_downloads if active_downloads[cid]]) + 1
         return False, queue_position
     return True, 0
 
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def process_queue():
+    """Kuyrukta bekleyen indirmeleri işle"""
+    if download_queue:
+        chat_id, update, context = download_queue[0]
+        if not active_downloads.get(chat_id, False):
+            # Kuyruktaki ilk işlemi başlat
+            download_queue.pop(0)
+            await handle_link(update, context, is_queued=True)
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE, is_queued=False):
     """Gelen linki işle"""
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -386,10 +395,12 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Kuyruk durumunu kontrol et
     can_download, queue_position = await check_queue(chat_id)
     
-    if not can_download:
+    if not can_download and not is_queued:
+        # Kullanıcının aktif indirmesi var, kuyruğa ekle
+        download_queue.append((chat_id, update, context))
         await update.message.reply_text(
             f"⏳ Şu anda başka bir indirme işleminiz devam ediyor.\n"
-            f"Lütfen mevcut indirme tamamlanana kadar bekleyin.\n"
+            f"Bu istek kuyruğa eklendi.\n"
             f"Sıranız: {queue_position}."
         )
         return
@@ -418,6 +429,8 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         # İndirme tamamlandı veya hata oluştu
         active_downloads[chat_id] = False
+        # Kuyrukta bekleyen varsa işle
+        await process_queue()
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
