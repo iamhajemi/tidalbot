@@ -1,2 +1,3 @@
 python-telegram-bot
-tidal-dl 
+tidal-dl
+tidal_unofficial 
