@@ -669,7 +669,10 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "-x",  # Sadece ses
                 "--audio-format", "mp3",  # MP3 formatı
                 "--audio-quality", "0",  # En iyi kalite
-                "-o", os.path.join(download_path, "%(title)s.%(ext)s"),  # Çıktı formatı
+                "--embed-metadata",  # Metadatayı ekle
+                "--parse-metadata", "title:%(title)s",  # Başlığı al
+                "--parse-metadata", "artist:%(uploader)s",  # Yükleyeni sanatçı olarak al
+                "-o", os.path.join(download_path, "%(title)s - %(uploader)s.%(ext)s"),  # Çıktı formatı
                 url
             ],
             stdout=subprocess.PIPE,
@@ -717,14 +720,21 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 file_name = os.path.basename(file_path)
                 title = os.path.splitext(file_name)[0]
                 
+                # Dosya adından sanatçı ve başlığı ayır
+                if " - " in title:
+                    artist, song_title = title.split(" - ", 1)
+                else:
+                    artist = "YouTube"
+                    song_title = title
+                
                 # Dosyayı Telegram'a gönder
                 with open(file_path, 'rb') as audio_file:
                     await context.bot.send_audio(
                         chat_id=chat_id,
                         audio=audio_file,
-                        title=title,
-                        performer="YouTube",
-                        caption=f"🎵 {title}\n📺 YouTube"
+                        title=song_title,
+                        performer=artist,
+                        caption=f"🎵 {song_title}\n👤 {artist}\n📺 YouTube"
                     )
             except Exception as e:
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
