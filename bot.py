@@ -532,26 +532,29 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
     """Kullanıcının kuyruğunu işle"""
     global download_queue, is_processing
     
+    # Eğer kullanıcı için işlem devam ediyorsa bekle
     if is_processing.get(user_id, False):
         return
         
     is_processing[user_id] = True
     
     try:
-        while download_queue.get(user_id, []):
-            url, link_type = download_queue[user_id][0]  # İlk öğeyi al ama silme
+        # Kuyrukta öğe varsa işle
+        if download_queue.get(user_id, []):
+            url, link_type = download_queue[user_id][0]  # İlk öğeyi al
             
             # Kullanıcının indirme klasörünü temizle
             clean_downloads(user_id)
             
             # Kuyruk durumunu göster
             queue_size = len(download_queue[user_id])
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=f"📥 İndirme başlıyor...\n"
-                     f"🔄 Kuyrukta {queue_size} öğe var\n"
-                     f"🔗 Şu anki: {url}"
-            )
+            if queue_size > 1:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"⬇️ İndirme başlıyor...\n"
+                         f"📝 Bu indirmeden sonra kuyrukta {queue_size-1} öğe daha var\n"
+                         f"🔗 Şu anki: {url}"
+                )
             
             # Sahte bir Update nesnesi oluştur
             class FakeMessage:
@@ -588,16 +591,18 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                 # İşlem tamamlandı, kuyruktaki öğeyi sil
                 download_queue[user_id].pop(0)
                 
-                # Kuyruk durumunu güncelle
+                # Kuyrukta kalan öğeleri göster
                 remaining = len(download_queue[user_id])
                 if remaining > 0:
+                    next_url = download_queue[user_id][0][0]
                     await context.bot.send_message(
                         chat_id=chat_id,
                         text=f"✅ İndirme tamamlandı\n"
-                             f"📝 Kuyrukta {remaining} öğe kaldı"
+                             f"📝 Sıradaki indirme başlıyor: {next_url}"
                     )
-                
-                await asyncio.sleep(2)  # İndirmeler arası biraz bekle
+                    # Sıradaki indirmeyi başlat
+                    await asyncio.sleep(2)
+                    asyncio.create_task(process_queue(user_id, context, chat_id))
                 
             except Exception as e:
                 logger.error(f"İndirme hatası: {str(e)}")
@@ -607,6 +612,11 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                 )
                 # Hatalı indirmeyi kuyruktan çıkar
                 download_queue[user_id].pop(0)
+                
+                # Kuyrukta başka öğe varsa devam et
+                if len(download_queue[user_id]) > 0:
+                    await asyncio.sleep(2)
+                    asyncio.create_task(process_queue(user_id, context, chat_id))
             finally:
                 # Her indirme denemesinden sonra kullanıcının klasörünü temizle
                 clean_downloads(user_id)
@@ -643,14 +653,18 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     download_queue[user_id].append((url, link_type))
     queue_position = len(download_queue[user_id])
     
-    await update.message.reply_text(
-        f"✅ Link kuyruğa eklendi\n"
-        f"📊 Sıra: {queue_position}\n"
-        f"🔗 Platform: {link_type.upper()}"
-    )
+    if queue_position == 1:
+        await update.message.reply_text("⬇️ İndirme başlıyor...")
+    else:
+        await update.message.reply_text(
+            f"📝 İndirme kuyruğa eklendi\n"
+            f"🔢 Sıra: {queue_position}\n"
+            f"🔗 Platform: {link_type.upper()}"
+        )
     
-    # Kuyruk işlemeyi başlat
-    asyncio.create_task(process_queue(user_id, context, chat_id))
+    # Eğer başka indirme yoksa kuyruk işlemeyi başlat
+    if not is_processing.get(user_id, False):
+        asyncio.create_task(process_queue(user_id, context, chat_id))
 
 async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Kuyruktaki öğeleri göster"""
