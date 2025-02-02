@@ -633,100 +633,6 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.args = [quality]
     await set_quality(update, context)
 
-async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tidal'da arama yap"""
-    if not context.args:
-        await update.message.reply_text("❌ Arama yapmak için bir şey yazın.\nÖrnek: /ara şarkı adı")
-        return
-    
-    search_query = " ".join(context.args)
-    await update.message.reply_text(f"🔍 Aranıyor: {search_query}")
-    
-    try:
-        # tidal-dl ile arama yap
-        process = subprocess.Popen(
-            ["tidal-dl", "--search", search_query],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            encoding='utf-8',
-            errors='ignore'
-        )
-        
-        # Sonuçları topla
-        results = []
-        current_result = {}
-        output_text = ""
-        
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                output = output.strip()
-                logger.info(output)
-                output_text += output + "\n"
-                
-                # Sonuçları parse et
-                if "Track:" in output:
-                    if current_result:
-                        results.append(current_result)
-                    current_result = {}
-                    current_result["title"] = output.split("Track: ")[-1]
-                elif "Artist:" in output:
-                    current_result["artist"] = output.split("Artist: ")[-1]
-                elif "Album:" in output:
-                    current_result["album"] = output.split("Album: ")[-1]
-                elif "Link:" in output:
-                    current_result["url"] = output.split("Link: ")[-1]
-        
-        # Son sonucu da ekle
-        if current_result:
-            results.append(current_result)
-        
-        # Sonuçları göster
-        if results:
-            # Butonları oluştur
-            keyboard = []
-            for i, result in enumerate(results[:10]):  # En fazla 10 sonuç göster
-                title = result.get("title", "Bilinmeyen")
-                artist = result.get("artist", "Bilinmeyen")
-                url = result.get("url", "")
-                button_text = f"{title} - {artist}"
-                keyboard.append([InlineKeyboardButton(button_text, callback_data=f"download_{url}")])
-            
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            
-            await update.message.reply_text(
-                f"🎵 {len(results)} sonuç bulundu:\n\n"
-                "İndirmek istediğiniz şarkıya tıklayın:",
-                reply_markup=reply_markup
-            )
-        else:
-            # Eğer parse edemedik ama çıktı varsa, çıktıyı göster
-            if output_text:
-                await update.message.reply_text(f"Arama sonuçları:\n\n{output_text}")
-            else:
-                await update.message.reply_text("❌ Sonuç bulunamadı")
-            
-    except Exception as e:
-        logger.error(f"Arama hatası: {str(e)}")
-        await update.message.reply_text("❌ Arama sırasında bir hata oluştu")
-
-async def download_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Arama sonuçlarından seçilen şarkıyı indir"""
-    query = update.callback_query
-    await query.answer()
-    
-    # URL'yi al
-    url = query.data.split('download_')[1]
-    
-    # İndirme mesajını güncelle
-    await query.message.edit_text(f"⬇️ İndiriliyor...")
-    
-    # İndirme işlemini başlat
-    context.user_data['url'] = url
-    await download_music(query.message, context)
-
 def main():
     logger.info("Bot başlatılıyor...")
     
@@ -740,9 +646,7 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("quality", set_quality))
-    application.add_handler(CommandHandler("ara", search))  # Arama komutu
     application.add_handler(CallbackQueryHandler(quality_button, pattern="^quality_"))
-    application.add_handler(CallbackQueryHandler(download_button, pattern="^download_"))  # İndirme butonu
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_music))
     application.add_error_handler(error_handler)
     
