@@ -31,6 +31,10 @@ QUALITY_OPTIONS = {
 # Kullanıcı kalite ayarları
 user_quality = {}
 
+# Kuyruk sistemi için global değişkenler
+download_queue = {}  # Her kullanıcı için ayrı kuyruk: {user_id: [(url, type), ...]}
+is_processing = {}  # Her kullanıcı için işlem durumu: {user_id: bool}
+
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
     try:
@@ -770,14 +774,122 @@ async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=get_quality_keyboard()
         )
 
+def detect_link_type(url):
+    """Link tipini otomatik algıla"""
+    if 'youtube.com' in url or 'youtu.be' in url:
+        return 'youtube'
+    elif 'tidal.com' in url:
+        return 'tidal'
+    else:
+        return None
+
+async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_id: int):
+    """Kullanıcının kuyruğunu işle"""
+    global download_queue, is_processing
+    
+    if is_processing.get(user_id, False):
+        return
+        
+    is_processing[user_id] = True
+    
+    try:
+        while download_queue.get(user_id, []):
+            url, link_type = download_queue[user_id][0]  # İlk öğeyi al ama silme
+            
+            # Kuyruk durumunu göster
+            queue_size = len(download_queue[user_id])
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=f"📥 İndirme başlıyor...\n"
+                     f"🔄 Kuyrukta {queue_size} öğe var\n"
+                     f"🔗 Şu anki: {url}"
+            )
+            
+            # Link tipine göre indirme işlemini başlat
+            if link_type == 'youtube':
+                await youtube_download(context, chat_id, url)
+            else:  # tidal
+                await download_music(context, chat_id, url)
+            
+            # İşlem tamamlandı, kuyruktaki öğeyi sil
+            download_queue[user_id].pop(0)
+            
+            # Kuyruk durumunu güncelle
+            remaining = len(download_queue[user_id])
+            if remaining > 0:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"✅ İndirme tamamlandı\n"
+                         f"📝 Kuyrukta {remaining} öğe kaldı"
+                )
+            
+            await asyncio.sleep(2)  # İndirmeler arası biraz bekle
+            
+    except Exception as e:
+        logger.error(f"Kuyruk işleme hatası: {str(e)}")
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="❌ Kuyruk işlenirken bir hata oluştu"
+        )
+    finally:
+        is_processing[user_id] = False
+
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gelen linki işle"""
-    mode = context.user_data.get('mode', 'tidal')  # Varsayılan: tidal
+    url = update.message.text.strip()
+    user_id = update.effective_user.id
+    chat_id = update.message.chat_id
     
-    if mode == 'youtube':
-        await youtube_download(update, context)
+    # Link tipini algıla
+    link_type = detect_link_type(url)
+    if not link_type:
+        await update.message.reply_text(
+            "❌ Geçerli bir Tidal veya YouTube linki gönderin",
+            reply_markup=get_quality_keyboard()
+        )
+        return
+    
+    # Kuyruğu başlat
+    if user_id not in download_queue:
+        download_queue[user_id] = []
+    
+    # Kuyruğa ekle
+    download_queue[user_id].append((url, link_type))
+    queue_position = len(download_queue[user_id])
+    
+    await update.message.reply_text(
+        f"✅ Link kuyruğa eklendi\n"
+        f"📊 Sıra: {queue_position}\n"
+        f"🔗 Platform: {link_type.upper()}"
+    )
+    
+    # Kuyruk işlemeyi başlat
+    asyncio.create_task(process_queue(user_id, context, chat_id))
+
+async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kuyruktaki öğeleri göster"""
+    user_id = update.effective_user.id
+    
+    if not download_queue.get(user_id):
+        await update.message.reply_text("📝 Kuyrukta öğe yok")
+        return
+        
+    queue_text = "📋 İndirme Kuyruğu:\n\n"
+    for i, (url, link_type) in enumerate(download_queue[user_id], 1):
+        queue_text += f"{i}. {link_type.upper()}: {url}\n"
+    
+    await update.message.reply_text(queue_text)
+
+async def clear_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kuyruğu temizle"""
+    user_id = update.effective_user.id
+    
+    if user_id in download_queue:
+        queue_size = len(download_queue[user_id])
+        download_queue[user_id] = []
+        await update.message.reply_text(f"✅ Kuyruk temizlendi ({queue_size} öğe silindi)")
     else:
-        await download_music(update, context)
+        await update.message.reply_text("📝 Kuyrukta öğe yok")
 
 def main():
     logger.info("Bot başlatılıyor...")
@@ -792,6 +904,8 @@ def main():
     
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("quality", set_quality))
+    application.add_handler(CommandHandler("kuyruk", show_queue))  # Kuyruk görüntüleme
+    application.add_handler(CommandHandler("temizle", clear_queue))  # Kuyruk temizleme
     application.add_handler(CallbackQueryHandler(quality_button, pattern="^quality_"))
     application.add_handler(CallbackQueryHandler(mode_button, pattern="^youtube_"))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
