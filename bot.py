@@ -135,50 +135,30 @@ async def find_music_file(download_path):
         
         # Önce sanatçı klasörlerini bul
         try:
+            if not os.path.exists(download_path):
+                logger.error(f"İndirme klasörü bulunamadı: {download_path}")
+                return []
+                
             artist_folders = [d for d in os.listdir(download_path) 
                             if os.path.isdir(os.path.join(download_path, d))]
             
             logger.info(f"Bulunan sanatçı klasörleri: {artist_folders}")
             
-            for artist_folder in artist_folders:
-                artist_path = os.path.join(download_path, artist_folder)
-                logger.info(f"Sanatçı klasörü kontrol ediliyor: {artist_folder}")
-                
-                try:
-                    # Albüm klasörlerini bul
-                    album_folders = [d for d in os.listdir(artist_path) 
-                                   if os.path.isdir(os.path.join(artist_path, d))]
-                    
-                    logger.info(f"Bulunan albüm klasörleri: {album_folders}")
-                    
-                    for album_folder in album_folders:
-                        album_path = os.path.join(artist_path, album_folder)
-                        logger.info(f"Albüm klasörü kontrol ediliyor: {album_folder}")
-                        
-                        try:
-                            # Müzik dosyalarını bul
-                            for file in os.listdir(album_path):
-                                if file.endswith(('.m4a', '.mp3', '.flac')):
-                                    full_path = os.path.join(album_path, file)
-                                    found_files.append(full_path)
-                                    logger.info(f"Müzik dosyası bulundu: {full_path}")
-                        except Exception as e:
-                            logger.error(f"Albüm klasörü okuma hatası: {str(e)}")
-                            continue
-                except Exception as e:
-                    logger.error(f"Sanatçı klasörü okuma hatası: {str(e)}")
-                    continue
-        except Exception as e:
-            logger.error(f"Downloads klasörü okuma hatası: {str(e)}")
-        
-        # Eğer dosya bulunduysa
-        if found_files:
-            logger.info(f"Toplam {len(found_files)} müzik dosyası bulundu")
+            # Tüm klasörlerde müzik dosyalarını ara
+            for root, dirs, files in os.walk(download_path):
+                for file in files:
+                    if file.endswith(('.m4a', '.mp3', '.flac')):
+                        full_path = os.path.join(root, file)
+                        found_files.append(full_path)
+                        logger.info(f"Müzik dosyası bulundu: {full_path}")
             
-            # En son değiştirilen dosyayı bul
-            newest_file = max(found_files, key=os.path.getmtime)
-            logger.info(f"En son değiştirilen dosya: {newest_file}")
-            return [newest_file]
+            # Eğer dosya bulunduysa
+            if found_files:
+                logger.info(f"Toplam {len(found_files)} müzik dosyası bulundu")
+                return found_files
+            
+        except Exception as e:
+            logger.error(f"Klasör okuma hatası: {str(e)}")
         
         attempt += 1
         if attempt < max_attempts:
