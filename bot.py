@@ -811,8 +811,16 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                     self.text = text
                     self.chat_id = chat_id
                     
-                async def reply_text(self, *args, **kwargs):
-                    return await context.bot.send_message(chat_id=chat_id, *args, **kwargs)
+                async def reply_text(self, text, *args, **kwargs):
+                    # chat_id parametresini kaldır
+                    if 'chat_id' in kwargs:
+                        del kwargs['chat_id']
+                    return await context.bot.send_message(
+                        chat_id=self.chat_id,
+                        text=text,
+                        *args,
+                        **kwargs
+                    )
             
             class FakeUpdate:
                 def __init__(self, message, user_id):
