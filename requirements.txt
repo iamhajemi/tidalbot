@@ -1,3 +1,5 @@
 python-telegram-bot
 tidal-dl
-tidal_unofficial
+beautifulsoup4
+requests
+pynput 

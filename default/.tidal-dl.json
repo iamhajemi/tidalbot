@@ -1,1 +1,25 @@
-{"albumFolderFormat": "{ArtistName}/{Flag} {AlbumTitle} [{AlbumID}] [{AlbumYear}]", "apiKeyIndex": 4, "audioQuality": "High", "checkExist": true, "downloadDelay": true, "downloadPath": "C:\\Users\\hajipc\\Desktop\\tidalbot\\tidalbot\\downloads", "includeEP": true, "language": 0, "lyricFile": false, "multiThread": false, "playlistFolderFormat": "Playlist/{PlaylistName} [{PlaylistUUID}]", "saveAlbumInfo": false, "saveCovers": true, "showProgress": true, "showTrackInfo": true, "trackFileFormat": "{TrackNumber} - {ArtistName} - {TrackTitle}{ExplicitFlag}", "usePlaylistFolder": true, "videoFileFormat": "{VideoNumber} - {ArtistName} - {VideoTitle}{ExplicitFlag}", "videoQuality": "P360"}
+{
+    "albumFolderFormat": "{ArtistName}/{Flag} {AlbumTitle} [{AlbumID}] [{AlbumYear}]",
+    "apiKeyIndex": 4,
+    "audioQuality": "Master",
+    "checkExist": true,
+    "downloadDelay": 2,
+    "downloadPath": "./downloads",
+    "includeEP": true,
+    "language": "TR",
+    "lyricFile": false,
+    "multiThread": false,
+    "playlistFolderFormat": "Playlist/{PlaylistName} [{PlaylistUUID}]",
+    "saveAlbumInfo": false,
+    "saveCovers": true,
+    "showProgress": true,
+    "showTrackInfo": true,
+    "trackFileFormat": "{TrackNumber}. {ArtistName} - {TrackTitle}{ExplicitFlag}",
+    "usePlaylistFolder": true,
+    "videoFileFormat": "{ArtistName} - {VideoTitle}{ExplicitFlag}",
+    "videoQuality": "P360",
+    "maxRetryTimes": 5,
+    "retryDelay": 5,
+    "requestTimeout": 30,
+    "downloadTimeout": 600
+}
