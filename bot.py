@@ -805,11 +805,28 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                      f"🔗 Şu anki: {url}"
             )
             
+            # Sahte bir Update nesnesi oluştur
+            class FakeMessage:
+                def __init__(self, text, chat_id):
+                    self.text = text
+                    self.chat_id = chat_id
+                    
+                async def reply_text(self, *args, **kwargs):
+                    return await context.bot.send_message(chat_id=chat_id, *args, **kwargs)
+            
+            class FakeUpdate:
+                def __init__(self, message, user_id):
+                    self.message = message
+                    self.effective_user = type('User', (), {'id': user_id, 'first_name': 'User'})
+            
+            fake_message = FakeMessage(url, chat_id)
+            fake_update = FakeUpdate(fake_message, user_id)
+            
             # Link tipine göre indirme işlemini başlat
             if link_type == 'youtube':
-                await youtube_download(context, chat_id, url)
+                await youtube_download(fake_update, context)
             else:  # tidal
-                await download_music(context, chat_id, url)
+                await download_music(fake_update, context)
             
             # İşlem tamamlandı, kuyruktaki öğeyi sil
             download_queue[user_id].pop(0)
