@@ -522,16 +522,6 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
             # Yeni indirme başlamadan önce klasörü temizle
             clean_downloads(user_id)
             
-            # Kuyruk durumunu göster
-            queue_size = len(download_queue[user_id])
-            if queue_size > 1:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"⬇️ İndirme başlıyor...\n"
-                         f"📝 Bu indirmeden sonra kuyrukta {queue_size-1} öğe daha var\n"
-                         f"🔗 Şu anki: {url}"
-                )
-            
             # Sahte bir Update nesnesi oluştur
             class FakeMessage:
                 def __init__(self, text, chat_id, user_id):
@@ -571,10 +561,13 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                 remaining = len(download_queue[user_id])
                 if remaining > 0:
                     next_url = download_queue[user_id][0][0]
+                    next_type = download_queue[user_id][0][1]
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text=f"✅ İndirme tamamlandı\n"
-                             f"📝 Sıradaki indirme başlıyor: {next_url}"
+                        text=f"✅ Önceki indirme tamamlandı\n"
+                             f"⏭️ Sıradaki indirme başlıyor:\n"
+                             f"🔗 Link: {next_url}\n"
+                             f"📱 Platform: {next_type.upper()}"
                     )
                     # Sıradaki indirmeyi başlat
                     await asyncio.sleep(2)
@@ -627,16 +620,23 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     queue_position = len(download_queue[user_id])
     
     if queue_position == 1:
-        await update.message.reply_text("⬇️ İndirme başlıyor...")
+        await update.message.reply_text(
+            f"⬇️ İndirme başlıyor...\n"
+            f"🔗 Link: {url}\n"
+            f"📱 Platform: {link_type.upper()}"
+        )
     else:
         await update.message.reply_text(
             f"📝 İndirme kuyruğa eklendi\n"
             f"🔢 Sıra: {queue_position}\n"
-            f"🔗 Platform: {link_type.upper()}"
+            f"🔗 Link: {url}\n"
+            f"📱 Platform: {link_type.upper()}\n\n"
+            f"ℹ️ Önceki indirme tamamlandıktan sonra otomatik olarak başlayacak"
         )
+        return  # İkinci ve sonraki istekler için hemen çık
     
-    # Eğer başka indirme yoksa kuyruk işlemeyi başlat
-    if not is_processing.get(user_id, False):
+    # Sadece ilk istek için kuyruk işlemeyi başlat
+    if queue_position == 1 and not is_processing.get(user_id, False):
         asyncio.create_task(process_queue(user_id, context, chat_id))
 
 async def show_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
