@@ -31,9 +31,6 @@ QUALITY_OPTIONS = {
 # Kullanıcı kalite ayarları
 user_quality = {}
 
-# Global değişkenler
-download_paths = {}  # Her kullanıcı için ayrı indirme yolu: {chat_id: path}
-
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
     try:
@@ -115,19 +112,13 @@ def setup_tidal(quality=None):
     logger.info(f"Tidal yapılandırması tamamlandı. Kalite: {config['audioQuality']}")
     logger.info(f"Config dosyası: {config_file}")
 
-def get_user_download_path(chat_id):
-    """Kullanıcıya özel indirme klasörü oluştur"""
-    download_path = os.path.join(os.getcwd(), "downloads", str(chat_id))
-    os.makedirs(download_path, exist_ok=True)
-    return download_path
-
-def clean_user_downloads(chat_id):
-    """Kullanıcının indirme klasörünü temizle"""
+def clean_downloads():
+    """İndirme klasörünü temizle"""
     try:
-        download_path = get_user_download_path(chat_id)
+        download_path = os.path.join(os.getcwd(), "downloads")
         if os.path.exists(download_path):
             shutil.rmtree(download_path)
-            logger.info(f"Kullanıcı {chat_id} için downloads klasörü temizlendi")
+            logger.info("Downloads klasörü temizlendi")
     except Exception as e:
         logger.error(f"Downloads klasörü temizleme hatası: {str(e)}")
 
@@ -200,7 +191,7 @@ async def try_download_with_quality(cmd_base, quality, update):
     await asyncio.sleep(3)
     
     # İndirilen dosyaları kontrol et
-    download_path = get_user_download_path(update.message.chat_id)
+    download_path = os.path.join(os.getcwd(), "downloads")
     if not os.path.exists(download_path):
         logger.info(f"{quality} kalitesinde indirme başarısız - Klasör yok")
         return False
@@ -251,7 +242,7 @@ async def get_playlist_tracks(playlist_id):
             return []
             
         # İndirme klasörünü kontrol et
-        download_path = get_user_download_path(update.message.chat_id)
+        download_path = os.path.join(os.getcwd(), "downloads")
         if os.path.exists(download_path):
             # Playlist klasörünü bul
             playlist_folders = [d for d in os.listdir(download_path) 
@@ -375,34 +366,6 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gelen linki işle"""
-    url = update.message.text.strip()
-    chat_id = update.message.chat_id
-    
-    try:
-        # URL'nin tipini kontrol et
-        if 'youtube.com' in url or 'youtu.be' in url:
-            # YouTube linki
-            logger.info("YouTube linki algılandı")
-            await youtube_download(update, context)
-        elif 'tidal.com' in url:
-            # Tidal linki
-            logger.info("Tidal linki algılandı")
-            await download_music(update, context)
-        else:
-            # Geçersiz link
-            await update.message.reply_text(
-                "❌ Geçerli bir link gönderin:\n"
-                "• YouTube linki (youtube.com veya youtu.be)\n"
-                "• Tidal linki (tidal.com)",
-                reply_markup=get_quality_keyboard()
-            )
-    except Exception as e:
-        logger.error(f"İndirme hatası: {str(e)}")
-        await update.message.reply_text("❌ İşlem başarısız")
-        clean_user_downloads(chat_id)
-
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -410,11 +373,12 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
-    # Kullanıcıya özel indirme klasörü oluştur
-    download_path = get_user_download_path(chat_id)
+    # İndirme klasörünü tanımla
+    download_path = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_path, exist_ok=True)
     
     # İndirme klasörünü temizle
-    clean_user_downloads(chat_id)
+    clean_downloads()
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
@@ -503,7 +467,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Playlist gönderme tamamlandı!")
-            clean_user_downloads(chat_id)
+            clean_downloads()
             
         elif 'album' in url:
             album_match = re.search(r'album/(\d+)', url)
@@ -578,7 +542,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Albüm gönderme tamamlandı!")
-            clean_user_downloads(chat_id)
+            clean_downloads()
             
         else:
             track_match = re.search(r'track/(\d+)', url)
@@ -653,12 +617,12 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Şarkı gönderme tamamlandı!")
-            clean_user_downloads(chat_id)
+            clean_downloads()
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_user_downloads(chat_id)
+        clean_downloads()
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
@@ -673,17 +637,15 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_quality(update, context)
 
 async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """YouTube'dan müzik indir"""
     url = update.message.text.strip()
     chat_id = update.message.chat_id
     user = update.effective_user
     
     logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
-    # Kullanıcıya özel indirme klasörü oluştur
-    download_path = get_user_download_path(chat_id)
-    
     # İndirme klasörünü temizle
-    clean_user_downloads(chat_id)
+    clean_downloads()
     
     # YouTube URL kontrolü
     if not ('youtube.com' in url or 'youtu.be' in url):
@@ -697,6 +659,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # İndirme klasörünü oluştur
+        download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
         
         # yt-dlp komutunu çalıştır
@@ -778,12 +741,12 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
         
         await update.message.reply_text("✅ YouTube indirme tamamlandı!")
-        clean_user_downloads(chat_id)
+        clean_downloads()
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_user_downloads(chat_id)
+        clean_downloads()
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
@@ -804,6 +767,28 @@ async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(
             "🎵 Tidal modu aktif!\n"
             "Tidal linki gönderin.",
+            reply_markup=get_quality_keyboard()
+        )
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gelen linki işle"""
+    url = update.message.text.strip()
+    
+    # URL'nin tipini kontrol et
+    if 'youtube.com' in url or 'youtu.be' in url:
+        # YouTube linki
+        logger.info("YouTube linki algılandı")
+        await youtube_download(update, context)
+    elif 'tidal.com' in url:
+        # Tidal linki
+        logger.info("Tidal linki algılandı")
+        await download_music(update, context)
+    else:
+        # Geçersiz link
+        await update.message.reply_text(
+            "❌ Geçerli bir link gönderin:\n"
+            "• YouTube linki (youtube.com veya youtu.be)\n"
+            "• Tidal linki (tidal.com)",
             reply_markup=get_quality_keyboard()
         )
 
