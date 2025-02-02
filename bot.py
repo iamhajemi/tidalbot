@@ -141,51 +141,32 @@ def clean_downloads(user_id=None):
     except Exception as e:
         logger.error(f"Downloads klasörü temizleme hatası: {str(e)}")
 
-async def find_music_file(download_path):
-    """İndirilen müzik dosyasını bul"""
-    max_attempts = 5  # Maksimum deneme sayısı
-    attempt = 0
+async def find_downloaded_files(download_path, max_wait=30, check_interval=5):
+    """İndirilen dosyaları bul ve bekle"""
+    logger.info(f"Dosyalar aranıyor: {download_path}")
     
-    while attempt < max_attempts:
-        logger.info(f"Dosya arama denemesi {attempt + 1}/{max_attempts}")
-        
-        # Tüm müzik dosyalarını bul
-        found_files = []
-        
-        # Önce sanatçı klasörlerini bul
-        try:
-            if not os.path.exists(download_path):
-                logger.error(f"İndirme klasörü bulunamadı: {download_path}")
-                return []
-                
-            artist_folders = [d for d in os.listdir(download_path) 
-                            if os.path.isdir(os.path.join(download_path, d))]
-            
-            logger.info(f"Bulunan sanatçı klasörleri: {artist_folders}")
-            
-            # Tüm klasörlerde müzik dosyalarını ara
-            for root, dirs, files in os.walk(download_path):
-                for file in files:
-                    if file.endswith(('.m4a', '.mp3', '.flac')):
-                        full_path = os.path.join(root, file)
-                        found_files.append(full_path)
-                        logger.info(f"Müzik dosyası bulundu: {full_path}")
-            
-            # Eğer dosya bulunduysa
-            if found_files:
-                logger.info(f"Toplam {len(found_files)} müzik dosyası bulundu")
-                return found_files
-            
-        except Exception as e:
-            logger.error(f"Klasör okuma hatası: {str(e)}")
-        
-        attempt += 1
-        if attempt < max_attempts:
-            logger.info("Dosya bulunamadı, 3 saniye bekleniyor...")
-            await asyncio.sleep(3)
+    start_time = asyncio.get_event_loop().time()
+    all_files = []
     
-    logger.error("Hiç müzik dosyası bulunamadı!")
-    return []  # Dosya bulunamadı
+    while (asyncio.get_event_loop().time() - start_time) < max_wait:
+        # Tüm alt klasörlerde ara
+        for root, dirs, files in os.walk(download_path):
+            for file in files:
+                if file.endswith(('.m4a', '.mp3', '.flac')):
+                    full_path = os.path.join(root, file)
+                    if full_path not in all_files:
+                        all_files.append(full_path)
+                        logger.info(f"Yeni dosya bulundu: {full_path}")
+        
+        if all_files:
+            logger.info(f"Toplam {len(all_files)} dosya bulundu")
+            return all_files
+        
+        logger.info("Dosya bulunamadı, bekleniyor...")
+        await asyncio.sleep(check_interval)
+    
+    logger.error("Zaman aşımı: Hiç dosya bulunamadı!")
+    return []
 
 async def try_download_with_quality(cmd_base, quality, update):
     """Belirli bir kalitede indirmeyi dene"""
@@ -766,18 +747,15 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Playlist indirme başarısız")
                 return
             
-            # İndirme sonrası biraz bekle
-            await asyncio.sleep(5)
-            
-            # İndirilen dosyaları bul
-            all_files = []
-            for root, dirs, files in os.walk(download_path):
-                for file in files:
-                    if file.endswith(('.m4a', '.mp3', '.flac')):
-                        all_files.append(os.path.join(root, file))
+            # İndirme sonrası bekle ve dosyaları bul
+            await update.message.reply_text("⬇️ İndirme tamamlandı, dosyalar hazırlanıyor...")
+            all_files = await find_downloaded_files(download_path)
             
             if not all_files:
-                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                error_msg = "❌ İndirilen şarkı bulunamadı. Muhtemelen indirme başarısız oldu."
+                if stderr:
+                    error_msg += f"\nHata: {stderr}"
+                await update.message.reply_text(error_msg)
                 return
             
             # Şarkılar bulundu, göndermeye başla
@@ -844,19 +822,19 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Albüm indirme başarısız")
                 return
             
-            # İndirme sonrası biraz bekle
-            await asyncio.sleep(5)
-            
-            # İndirilen dosyaları bul
-            all_files = []
-            for root, dirs, files in os.walk(download_path):
-                for file in files:
-                    if file.endswith(('.m4a', '.mp3', '.flac')):
-                        all_files.append(os.path.join(root, file))
+            # İndirme sonrası bekle ve dosyaları bul
+            await update.message.reply_text("⬇️ İndirme tamamlandı, dosyalar hazırlanıyor...")
+            all_files = await find_downloaded_files(download_path)
             
             if not all_files:
-                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                error_msg = "❌ İndirilen şarkı bulunamadı. Muhtemelen indirme başarısız oldu."
+                if stderr:
+                    error_msg += f"\nHata: {stderr}"
+                await update.message.reply_text(error_msg)
                 return
+            
+            # Şarkılar bulundu, göndermeye başla
+            await update.message.reply_text(f"📝 Toplam {len(all_files)} şarkı bulundu, gönderiliyor...")
             
             # Her şarkıyı gönder
             for index, file_path in enumerate(all_files, 1):
@@ -919,22 +897,22 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Şarkı indirme başarısız")
                 return
             
-            # İndirme sonrası biraz bekle
-            await asyncio.sleep(5)
-            
-            # İndirilen dosyaları bul
-            all_files = []
-            for root, dirs, files in os.walk(download_path):
-                for file in files:
-                    if file.endswith(('.m4a', '.mp3', '.flac')):
-                        all_files.append(os.path.join(root, file))
+            # İndirme sonrası bekle ve dosyaları bul
+            await update.message.reply_text("⬇️ İndirme tamamlandı, dosyalar hazırlanıyor...")
+            all_files = await find_downloaded_files(download_path)
             
             if not all_files:
-                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                error_msg = "❌ İndirilen şarkı bulunamadı. Muhtemelen indirme başarısız oldu."
+                if stderr:
+                    error_msg += f"\nHata: {stderr}"
+                await update.message.reply_text(error_msg)
                 return
             
+            # Şarkılar bulundu, göndermeye başla
+            await update.message.reply_text(f"📝 Toplam {len(all_files)} şarkı bulundu, gönderiliyor...")
+            
             # Her şarkıyı gönder
-            for file_path in all_files:
+            for index, file_path in enumerate(all_files, 1):
                 try:
                     # Dosya bilgilerini al
                     file_name = os.path.basename(file_path)
@@ -948,7 +926,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                             audio=audio_file,
                             title=os.path.splitext(file_name)[0],
                             performer=artist,
-                            caption=f"🎵 {file_name}\n👤 {artist}"
+                            caption=f"🎵 {file_name}\n👤 {artist}\n📊 {index}/{len(all_files)}"
                         )
                 except Exception as e:
                     logger.error(f"Dosya gönderme hatası: {str(e)}")
