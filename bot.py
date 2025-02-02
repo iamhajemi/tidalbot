@@ -375,9 +375,6 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user_id})")
     
-    # Kullanıcının indirme klasörünü temizle
-    clean_downloads(user_id)
-    
     # YouTube URL kontrolü
     if not ('youtube.com' in url or 'youtu.be' in url):
         await update.message.reply_text(
@@ -471,12 +468,10 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
         
         await update.message.reply_text("✅ YouTube indirme tamamlandı!")
-        clean_downloads(user_id)
         
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_downloads(user_id)
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
@@ -524,7 +519,7 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
         if download_queue.get(user_id, []):
             url, link_type = download_queue[user_id][0]  # İlk öğeyi al
             
-            # Kullanıcının indirme klasörünü temizle
+            # Yeni indirme başlamadan önce klasörü temizle
             clean_downloads(user_id)
             
             # Kuyruk durumunu göster
@@ -598,9 +593,6 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
                 if len(download_queue[user_id]) > 0:
                     await asyncio.sleep(2)
                     asyncio.create_task(process_queue(user_id, context, chat_id))
-            finally:
-                # Her indirme denemesinden sonra kullanıcının klasörünü temizle
-                clean_downloads(user_id)
             
     except Exception as e:
         logger.error(f"Kuyruk işleme hatası: {str(e)}")
@@ -696,9 +688,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     download_path = get_user_download_path(user_id)
     os.makedirs(download_path, exist_ok=True)
     
-    # İndirme klasörünü temizle
-    clean_downloads(user_id)
-    
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
         await update.message.reply_text(
@@ -783,7 +772,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Playlist gönderme tamamlandı!")
-            clean_downloads(user_id)
             
         elif 'album' in url:
             album_match = re.search(r'album/(\d+)', url)
@@ -858,7 +846,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Albüm gönderme tamamlandı!")
-            clean_downloads(user_id)
             
         else:
             track_match = re.search(r'track/(\d+)', url)
@@ -933,12 +920,10 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Şarkı gönderme tamamlandı!")
-            clean_downloads(user_id)
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_downloads(user_id)
 
 def main():
     logger.info("Bot başlatılıyor...")
