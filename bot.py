@@ -31,6 +31,10 @@ QUALITY_OPTIONS = {
 # Kullanıcı kalite ayarları
 user_quality = {}
 
+# Global değişkenler
+active_downloads = {}  # Aktif indirmeler: {chat_id: True/False}
+download_queue = {}   # İndirme kuyruğu: {chat_id: position}
+
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
     try:
@@ -366,6 +370,55 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
+async def check_queue(chat_id):
+    """Kuyrukta bekleyen indirme var mı kontrol et"""
+    if chat_id in active_downloads and active_downloads[chat_id]:
+        # Bu kullanıcının zaten aktif bir indirmesi var
+        queue_position = len([pos for pos in active_downloads.values() if pos]) + 1
+        return False, queue_position
+    return True, 0
+
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gelen linki işle"""
+    url = update.message.text.strip()
+    chat_id = update.message.chat_id
+    
+    # Kuyruk durumunu kontrol et
+    can_download, queue_position = await check_queue(chat_id)
+    
+    if not can_download:
+        await update.message.reply_text(
+            f"⏳ Şu anda başka bir indirme işleminiz devam ediyor.\n"
+            f"Lütfen mevcut indirme tamamlanana kadar bekleyin.\n"
+            f"Sıranız: {queue_position}."
+        )
+        return
+    
+    # İndirmeyi başlat
+    try:
+        active_downloads[chat_id] = True
+        
+        # URL'nin tipini kontrol et
+        if 'youtube.com' in url or 'youtu.be' in url:
+            # YouTube linki
+            logger.info("YouTube linki algılandı")
+            await youtube_download(update, context)
+        elif 'tidal.com' in url:
+            # Tidal linki
+            logger.info("Tidal linki algılandı")
+            await download_music(update, context)
+        else:
+            # Geçersiz link
+            await update.message.reply_text(
+                "❌ Geçerli bir link gönderin:\n"
+                "• YouTube linki (youtube.com veya youtu.be)\n"
+                "• Tidal linki (tidal.com)",
+                reply_markup=get_quality_keyboard()
+            )
+    finally:
+        # İndirme tamamlandı veya hata oluştu
+        active_downloads[chat_id] = False
+
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -623,6 +676,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
         clean_downloads()
+    finally:
+        # İndirme durumunu güncelle
+        active_downloads[update.message.chat_id] = False
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
@@ -747,6 +803,9 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
         clean_downloads()
+    finally:
+        # İndirme durumunu güncelle
+        active_downloads[update.message.chat_id] = False
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
@@ -767,28 +826,6 @@ async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.edit_text(
             "🎵 Tidal modu aktif!\n"
             "Tidal linki gönderin.",
-            reply_markup=get_quality_keyboard()
-        )
-
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gelen linki işle"""
-    url = update.message.text.strip()
-    
-    # URL'nin tipini kontrol et
-    if 'youtube.com' in url or 'youtu.be' in url:
-        # YouTube linki
-        logger.info("YouTube linki algılandı")
-        await youtube_download(update, context)
-    elif 'tidal.com' in url:
-        # Tidal linki
-        logger.info("Tidal linki algılandı")
-        await download_music(update, context)
-    else:
-        # Geçersiz link
-        await update.message.reply_text(
-            "❌ Geçerli bir link gönderin:\n"
-            "• YouTube linki (youtube.com veya youtu.be)\n"
-            "• Tidal linki (tidal.com)",
             reply_markup=get_quality_keyboard()
         )
 
