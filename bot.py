@@ -272,6 +272,78 @@ async def get_playlist_tracks(playlist_id):
         logger.error(f"Playlist track listesi alınamadı: {str(e)}")
         return []
 
+def get_quality_menu():
+    """Kalite seçenekleri menüsünü döndür"""
+    return (
+        "\n\n📊 Kalite Seçenekleri:\n"
+        "/quality normal - AAC 320kbps\n"
+        "/quality high - MP3 320kbps\n"
+        "/quality hifi - FLAC\n"
+        "/quality master - Master"
+    )
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+    logger.info(f"Yeni kullanıcı başladı: {user.first_name} (ID: {user.id})")
+    await update.message.reply_text(
+        "Merhaba! Müzik indirmek için:\n\n"
+        "1. Tidal şarkı linki gönderin\n"
+        "2. Tidal playlist linki gönderin\n"
+        "3. Tidal albüm linki gönderin" + 
+        get_quality_menu()
+    )
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Hata yönetimi"""
+    try:
+        logger.error(f"Hata oluştu: {context.error}")
+        if update and update.message:
+            await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
+    except Exception as e:
+        logger.error(f"Hata işlenirken yeni hata oluştu: {str(e)}")
+
+async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kalite ayarını değiştir"""
+    user_id = update.effective_user.id
+    
+    if not context.args or context.args[0].lower() not in QUALITY_OPTIONS:
+        await update.message.reply_text("Lütfen kalite seçin:" + get_quality_menu())
+        return
+    
+    quality = context.args[0].lower()
+    quality_value = QUALITY_OPTIONS[quality]
+    user_quality[user_id] = quality_value
+    
+    # Config dosyasını güncelle
+    config_dir = os.path.join(os.getcwd(), "default")
+    config_file = os.path.join(config_dir, '.tidal-dl.json')
+    home_config = os.path.expanduser('~/.tidal-dl.json')
+    
+    try:
+        # Önce botun klasöründeki config'i güncelle
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        
+        config['audioQuality'] = quality_value
+        
+        with open(config_file, 'w') as f:
+            json.dump(config, f, indent=4)
+            
+        # Ana dizindeki config'i de güncelle
+        if os.path.exists(home_config):
+            with open(home_config, 'w') as f:
+                json.dump(config, f, indent=4)
+        
+        await update.message.reply_text(
+            f"✅ Kalite ayarı güncellendi: {quality.upper()}\n"
+            f"Yeni kalite: {quality_value}" + 
+            get_quality_menu()
+        )
+        
+    except Exception as e:
+        logger.error(f"Kalite ayarı güncelleme hatası: {str(e)}")
+        await update.message.reply_text("❌ Kalite ayarı güncellenirken hata oluştu" + get_quality_menu())
+
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -288,9 +360,17 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
-        await update.message.reply_text("❌ Geçerli bir Tidal linki gönderin")
+        await update.message.reply_text("❌ Geçerli bir Tidal linki gönderin" + get_quality_menu())
         return
     
+    # Diğer mesajlarda da kalite menüsünü ekleyelim
+    if 'playlist' in url:
+        await update.message.reply_text("🔍 Playlist indiriliyor..." + get_quality_menu())
+    elif 'album' in url:
+        await update.message.reply_text("⬇️ Albüm indiriliyor..." + get_quality_menu())
+    else:
+        await update.message.reply_text("⬇️ Şarkı indiriliyor..." + get_quality_menu())
+        
     try:
         # URL tipini kontrol et
         if 'playlist' in url:
@@ -552,77 +632,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
         clean_downloads()
-
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user = update.effective_user
-    logger.info(f"Yeni kullanıcı başladı: {user.first_name} (ID: {user.id})")
-    await update.message.reply_text(
-        "Merhaba! Müzik indirmek için:\n\n"
-        "1. Tidal şarkı linki gönderin\n"
-        "2. Tidal playlist linki gönderin\n"
-        "3. Tidal albüm linki gönderin\n\n"
-        "Kalite ayarı için:\n"
-        "/quality normal - AAC 320kbps\n"
-        "/quality high - MP3 320kbps\n"
-        "/quality hifi - FLAC\n"
-        "/quality master - Master"
-    )
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Hata yönetimi"""
-    try:
-        logger.error(f"Hata oluştu: {context.error}")
-        if update and update.message:
-            await update.message.reply_text("Bir hata oluştu. Lütfen geçerli bir Tidal linki gönderdiğinizden emin olun.")
-    except Exception as e:
-        logger.error(f"Hata işlenirken yeni hata oluştu: {str(e)}")
-
-async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Kalite ayarını değiştir"""
-    user_id = update.effective_user.id
-    
-    if not context.args or context.args[0].lower() not in QUALITY_OPTIONS:
-        await update.message.reply_text(
-            "Lütfen kalite seçin:\n\n"
-            "/quality normal - AAC 320kbps\n"
-            "/quality high - MP3 320kbps\n"
-            "/quality hifi - FLAC\n"
-            "/quality master - Master"
-        )
-        return
-    
-    quality = context.args[0].lower()
-    quality_value = QUALITY_OPTIONS[quality]  # Direkt olarak doğru formatta al
-    user_quality[user_id] = quality_value
-    
-    # Config dosyasını güncelle
-    config_dir = os.path.join(os.getcwd(), "default")
-    config_file = os.path.join(config_dir, '.tidal-dl.json')
-    home_config = os.path.expanduser('~/.tidal-dl.json')
-    
-    try:
-        # Önce botun klasöründeki config'i güncelle
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-        
-        config['audioQuality'] = quality_value
-        
-        with open(config_file, 'w') as f:
-            json.dump(config, f, indent=4)
-            
-        # Ana dizindeki config'i de güncelle
-        if os.path.exists(home_config):
-            with open(home_config, 'w') as f:
-                json.dump(config, f, indent=4)
-        
-        await update.message.reply_text(
-            f"✅ Kalite ayarı güncellendi: {quality.upper()}\n"
-            f"Yeni kalite: {quality_value}"
-        )
-        
-    except Exception as e:
-        logger.error(f"Kalite ayarı güncelleme hatası: {str(e)}")
-        await update.message.reply_text("❌ Kalite ayarı güncellenirken hata oluştu")
 
 def main():
     logger.info("Bot başlatılıyor...")
