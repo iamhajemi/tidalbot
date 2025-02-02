@@ -379,16 +379,28 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
-        await update.message.reply_text("❌ Geçerli bir Tidal linki gönderin" + get_quality_menu())
+        await update.message.reply_text(
+            "❌ Geçerli bir Tidal linki gönderin",
+            reply_markup=get_quality_keyboard()
+        )
         return
     
     # Diğer mesajlarda da kalite menüsünü ekleyelim
     if 'playlist' in url:
-        await update.message.reply_text("🔍 Playlist indiriliyor..." + get_quality_menu())
+        await update.message.reply_text(
+            "🔍 Playlist indiriliyor...",
+            reply_markup=get_quality_keyboard()
+        )
     elif 'album' in url:
-        await update.message.reply_text("⬇️ Albüm indiriliyor..." + get_quality_menu())
+        await update.message.reply_text(
+            "⬇️ Albüm indiriliyor...",
+            reply_markup=get_quality_keyboard()
+        )
     else:
-        await update.message.reply_text("⬇️ Şarkı indiriliyor..." + get_quality_menu())
+        await update.message.reply_text(
+            "⬇️ Şarkı indiriliyor...",
+            reply_markup=get_quality_keyboard()
+        )
         
     try:
         # URL tipini kontrol et
