@@ -796,6 +796,9 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
         while download_queue.get(user_id, []):
             url, link_type = download_queue[user_id][0]  # İlk öğeyi al ama silme
             
+            # İndirme klasörünü temizle
+            clean_downloads()
+            
             # Kuyruk durumunu göster
             queue_size = len(download_queue[user_id])
             await context.bot.send_message(
@@ -830,25 +833,38 @@ async def process_queue(user_id: int, context: ContextTypes.DEFAULT_TYPE, chat_i
             fake_message = FakeMessage(url, chat_id)
             fake_update = FakeUpdate(fake_message, user_id)
             
-            # Link tipine göre indirme işlemini başlat
-            if link_type == 'youtube':
-                await youtube_download(fake_update, context)
-            else:  # tidal
-                await download_music(fake_update, context)
-            
-            # İşlem tamamlandı, kuyruktaki öğeyi sil
-            download_queue[user_id].pop(0)
-            
-            # Kuyruk durumunu güncelle
-            remaining = len(download_queue[user_id])
-            if remaining > 0:
+            try:
+                # Link tipine göre indirme işlemini başlat
+                if link_type == 'youtube':
+                    await youtube_download(fake_update, context)
+                else:  # tidal
+                    await download_music(fake_update, context)
+                
+                # İşlem tamamlandı, kuyruktaki öğeyi sil
+                download_queue[user_id].pop(0)
+                
+                # Kuyruk durumunu güncelle
+                remaining = len(download_queue[user_id])
+                if remaining > 0:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=f"✅ İndirme tamamlandı\n"
+                             f"📝 Kuyrukta {remaining} öğe kaldı"
+                    )
+                
+                await asyncio.sleep(2)  # İndirmeler arası biraz bekle
+                
+            except Exception as e:
+                logger.error(f"İndirme hatası: {str(e)}")
                 await context.bot.send_message(
                     chat_id=chat_id,
-                    text=f"✅ İndirme tamamlandı\n"
-                         f"📝 Kuyrukta {remaining} öğe kaldı"
+                    text=f"❌ İndirme başarısız: {str(e)}"
                 )
-            
-            await asyncio.sleep(2)  # İndirmeler arası biraz bekle
+                # Hatalı indirmeyi kuyruktan çıkar
+                download_queue[user_id].pop(0)
+            finally:
+                # Her indirme denemesinden sonra klasörü temizle
+                clean_downloads()
             
     except Exception as e:
         logger.error(f"Kuyruk işleme hatası: {str(e)}")
