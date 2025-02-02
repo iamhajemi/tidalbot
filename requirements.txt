@@ -3,5 +3,4 @@ tidal-dl
 requests
 python-dotenv
 yt-dlp
-beautifulsoup4
-pynput 
+beautifulsoup4 
