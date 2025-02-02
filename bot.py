@@ -299,6 +299,10 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
+    # İndirme klasörünü tanımla
+    download_path = os.path.join(os.getcwd(), "downloads")
+    os.makedirs(download_path, exist_ok=True)
+    
     # İndirme klasörünü temizle
     clean_downloads()
     
@@ -351,7 +355,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         await asyncio.sleep(5)  # Dosyaların yazılması için bekle
                         
                         # İndirilen dosyaları bul
-                        download_path = os.path.join(os.getcwd(), "downloads")
                         if not os.path.exists(download_path):
                             if retry < max_retries - 1:
                                 logger.info(f"Deneme {retry + 1}/{max_retries} başarısız, tekrar deneniyor...")
