@@ -645,7 +645,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # tidal-dl ile arama yap
         process = subprocess.Popen(
-            ["tidal-dl", "-s", search_query],
+            ["tidal-dl", "--search", search_query],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             encoding='utf-8',
@@ -655,6 +655,7 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Sonuçları topla
         results = []
         current_result = {}
+        output_text = ""
         
         while True:
             output = process.stdout.readline()
@@ -663,20 +664,20 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if output:
                 output = output.strip()
                 logger.info(output)
+                output_text += output + "\n"
                 
                 # Sonuçları parse et
-                if "[URL]" in output:
+                if "Track:" in output:
                     if current_result:
                         results.append(current_result)
-                    current_result = {"url": output.split("[URL] ")[-1]}
-                elif "[Title]" in output:
-                    current_result["title"] = output.split("[Title] ")[-1]
-                elif "[Artist]" in output:
-                    current_result["artist"] = output.split("[Artist] ")[-1]
-                elif "[Album]" in output:
-                    current_result["album"] = output.split("[Album] ")[-1]
-                elif "[Duration]" in output:
-                    current_result["duration"] = output.split("[Duration] ")[-1]
+                    current_result = {}
+                    current_result["title"] = output.split("Track: ")[-1]
+                elif "Artist:" in output:
+                    current_result["artist"] = output.split("Artist: ")[-1]
+                elif "Album:" in output:
+                    current_result["album"] = output.split("Album: ")[-1]
+                elif "Link:" in output:
+                    current_result["url"] = output.split("Link: ")[-1]
         
         # Son sonucu da ekle
         if current_result:
@@ -701,7 +702,11 @@ async def search(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=reply_markup
             )
         else:
-            await update.message.reply_text("❌ Sonuç bulunamadı")
+            # Eğer parse edemedik ama çıktı varsa, çıktıyı göster
+            if output_text:
+                await update.message.reply_text(f"Arama sonuçları:\n\n{output_text}")
+            else:
+                await update.message.reply_text("❌ Sonuç bulunamadı")
             
     except Exception as e:
         logger.error(f"Arama hatası: {str(e)}")
