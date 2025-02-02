@@ -772,12 +772,25 @@ async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gelen linki işle"""
-    mode = context.user_data.get('mode', 'tidal')  # Varsayılan: tidal
+    url = update.message.text.strip()
     
-    if mode == 'youtube':
+    # URL'nin tipini kontrol et
+    if 'youtube.com' in url or 'youtu.be' in url:
+        # YouTube linki
+        logger.info("YouTube linki algılandı")
         await youtube_download(update, context)
-    else:
+    elif 'tidal.com' in url:
+        # Tidal linki
+        logger.info("Tidal linki algılandı")
         await download_music(update, context)
+    else:
+        # Geçersiz link
+        await update.message.reply_text(
+            "❌ Geçerli bir link gönderin:\n"
+            "• YouTube linki (youtube.com veya youtu.be)\n"
+            "• Tidal linki (tidal.com)",
+            reply_markup=get_quality_keyboard()
+        )
 
 def main():
     logger.info("Bot başlatılıyor...")
