@@ -32,9 +32,7 @@ QUALITY_OPTIONS = {
 user_quality = {}
 
 # Global değişkenler
-active_downloads = {}  # Aktif indirmeler: {chat_id: True/False}
-download_queue = []   # İndirme kuyruğu: [(chat_id, update, context), ...]
-current_download = None  # Şu anda indirme yapan kullanıcı
+download_paths = {}  # Her kullanıcı için ayrı indirme yolu: {chat_id: path}
 
 def update_from_github():
     logger.info("GitHub'dan güncel kod alınıyor...")
@@ -117,13 +115,19 @@ def setup_tidal(quality=None):
     logger.info(f"Tidal yapılandırması tamamlandı. Kalite: {config['audioQuality']}")
     logger.info(f"Config dosyası: {config_file}")
 
-def clean_downloads():
-    """İndirme klasörünü temizle"""
+def get_user_download_path(chat_id):
+    """Kullanıcıya özel indirme klasörü oluştur"""
+    download_path = os.path.join(os.getcwd(), "downloads", str(chat_id))
+    os.makedirs(download_path, exist_ok=True)
+    return download_path
+
+def clean_user_downloads(chat_id):
+    """Kullanıcının indirme klasörünü temizle"""
     try:
-        download_path = os.path.join(os.getcwd(), "downloads")
+        download_path = get_user_download_path(chat_id)
         if os.path.exists(download_path):
             shutil.rmtree(download_path)
-            logger.info("Downloads klasörü temizlendi")
+            logger.info(f"Kullanıcı {chat_id} için downloads klasörü temizlendi")
     except Exception as e:
         logger.error(f"Downloads klasörü temizleme hatası: {str(e)}")
 
@@ -196,7 +200,7 @@ async def try_download_with_quality(cmd_base, quality, update):
     await asyncio.sleep(3)
     
     # İndirilen dosyaları kontrol et
-    download_path = os.path.join(os.getcwd(), "downloads")
+    download_path = get_user_download_path(update.message.chat_id)
     if not os.path.exists(download_path):
         logger.info(f"{quality} kalitesinde indirme başarısız - Klasör yok")
         return False
@@ -247,7 +251,7 @@ async def get_playlist_tracks(playlist_id):
             return []
             
         # İndirme klasörünü kontrol et
-        download_path = os.path.join(os.getcwd(), "downloads")
+        download_path = get_user_download_path(update.message.chat_id)
         if os.path.exists(download_path):
             # Playlist klasörünü bul
             playlist_folders = [d for d in os.listdir(download_path) 
@@ -371,75 +375,12 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
-async def check_queue(chat_id):
-    """Kuyrukta bekleyen indirme var mı kontrol et"""
-    # Eğer hiç aktif indirme yoksa
-    if not current_download:
-        return True, 0
-    
-    # Eğer bu kullanıcının aktif indirmesi varsa
-    if current_download == chat_id:
-        return False, 0
-    
-    # Kullanıcının kuyruk pozisyonunu bul
-    queue_position = 1  # Aktif indirme olduğu için en az 1
-    for queued_chat_id, _, _ in download_queue:
-        if queued_chat_id == chat_id:
-            return False, queue_position
-        queue_position += 1
-    
-    return False, queue_position
-
-async def process_queue():
-    """Kuyrukta bekleyen indirmeleri işle"""
-    global current_download
-    
-    if not current_download and download_queue:
-        # Kuyruktaki ilk işlemi başlat
-        chat_id, update, context = download_queue.pop(0)
-        current_download = chat_id
-        
-        # Kuyruktaki diğer kullanıcılara güncel sıra bilgisi gönder
-        position = 1
-        for queued_chat_id, queued_update, _ in download_queue:
-            try:
-                await queued_update.message.reply_text(
-                    f"⏳ Sıranız güncellendi!\n"
-                    f"Yeni sıranız: {position}\n"
-                    f"Lütfen bekleyin..."
-                )
-            except Exception as e:
-                logger.error(f"Sıra güncelleme mesajı gönderilemedi: {str(e)}")
-            position += 1
-        
-        # İndirmeyi başlat
-        await handle_link(update, context, is_queued=True)
-
-async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE, is_queued=False):
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Gelen linki işle"""
-    global current_download
-    
     url = update.message.text.strip()
     chat_id = update.message.chat_id
     
     try:
-        # Kuyruk durumunu kontrol et
-        can_download, queue_position = await check_queue(chat_id)
-        
-        if not can_download and not is_queued:
-            # Kullanıcının aktif indirmesi var veya kuyrukta, kuyruğa ekle
-            download_queue.append((chat_id, update, context))
-            await update.message.reply_text(
-                f"⏳ Şu anda başka bir indirme işlemi devam ediyor.\n"
-                f"İsteğiniz kuyruğa eklendi.\n"
-                f"Sıranız: {queue_position}\n"
-                f"Size sıra geldiğinde bildirim yapılacak."
-            )
-            return
-        
-        # İndirmeyi başlat
-        current_download = chat_id
-        
         # URL'nin tipini kontrol et
         if 'youtube.com' in url or 'youtu.be' in url:
             # YouTube linki
@@ -457,16 +398,10 @@ async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE, is_que
                 "• Tidal linki (tidal.com)",
                 reply_markup=get_quality_keyboard()
             )
-            
     except Exception as e:
         logger.error(f"İndirme hatası: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-    finally:
-        # İndirme tamamlandı veya hata oluştu
-        if current_download == chat_id:
-            current_download = None
-            # Kuyrukta bekleyen varsa işle
-            await process_queue()
+        clean_user_downloads(chat_id)
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
@@ -475,12 +410,11 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
-    # İndirme klasörünü tanımla
-    download_path = os.path.join(os.getcwd(), "downloads")
-    os.makedirs(download_path, exist_ok=True)
+    # Kullanıcıya özel indirme klasörü oluştur
+    download_path = get_user_download_path(chat_id)
     
     # İndirme klasörünü temizle
-    clean_downloads()
+    clean_user_downloads(chat_id)
     
     # Tidal URL kontrolü
     if not 'tidal.com' in url:
@@ -569,7 +503,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Playlist gönderme tamamlandı!")
-            clean_downloads()
+            clean_user_downloads(chat_id)
             
         elif 'album' in url:
             album_match = re.search(r'album/(\d+)', url)
@@ -644,7 +578,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Albüm gönderme tamamlandı!")
-            clean_downloads()
+            clean_user_downloads(chat_id)
             
         else:
             track_match = re.search(r'track/(\d+)', url)
@@ -719,15 +653,12 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     continue
             
             await update.message.reply_text("✅ Şarkı gönderme tamamlandı!")
-            clean_downloads()
+            clean_user_downloads(chat_id)
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_downloads()
-    finally:
-        # İndirme durumunu güncelle
-        active_downloads[update.message.chat_id] = False
+        clean_user_downloads(chat_id)
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
@@ -742,15 +673,17 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_quality(update, context)
 
 async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """YouTube'dan müzik indir"""
     url = update.message.text.strip()
     chat_id = update.message.chat_id
     user = update.effective_user
     
     logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
+    # Kullanıcıya özel indirme klasörü oluştur
+    download_path = get_user_download_path(chat_id)
+    
     # İndirme klasörünü temizle
-    clean_downloads()
+    clean_user_downloads(chat_id)
     
     # YouTube URL kontrolü
     if not ('youtube.com' in url or 'youtu.be' in url):
@@ -764,7 +697,6 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # İndirme klasörünü oluştur
-        download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
         
         # yt-dlp komutunu çalıştır
@@ -846,15 +778,12 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 continue
         
         await update.message.reply_text("✅ YouTube indirme tamamlandı!")
-        clean_downloads()
+        clean_user_downloads(chat_id)
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         await update.message.reply_text("❌ İşlem başarısız")
-        clean_downloads()
-    finally:
-        # İndirme durumunu güncelle
-        active_downloads[update.message.chat_id] = False
+        clean_user_downloads(chat_id)
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
