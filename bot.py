@@ -677,6 +677,18 @@ async def clear_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text("📝 Kuyrukta öğe yok")
 
+async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Kalite seçimi butonlarını işle"""
+    query = update.callback_query
+    await query.answer()  # Butona tıklandığını bildir
+    
+    # Seçilen kaliteyi al
+    quality = query.data.split('_')[1]  # quality_normal -> normal
+    
+    # /quality komutunu çalıştır
+    context.args = [quality]
+    await set_quality(update, context)
+
 def main():
     logger.info("Bot başlatılıyor...")
     
