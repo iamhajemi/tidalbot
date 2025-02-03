@@ -367,24 +367,25 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
 async def send_audio(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str, title: str = None):
-    """Ses dosyasını gönder ve müzik playlistine ekle"""
+    """Ses dosyasını gönder ve müzik olarak işaretle"""
     try:
+        # Dosya adından sanatçı ve şarkı adını ayır
+        if title and " - " in title:
+            artist, song_title = title.split(" - ", 1)
+        else:
+            artist = "Music Bot"
+            song_title = title if title else os.path.basename(file_path)
+
         with open(file_path, 'rb') as audio_file:
-            message = await context.bot.send_audio(
+            await context.bot.send_audio(
                 chat_id=update.effective_chat.id,
                 audio=audio_file,
-                title=title,
-                performer="Music Bot",  # Performer ekleyerek playlist'e eklenmesini sağla
-                caption="🎵",  # Müzik emojisi ekle
+                title=song_title,
+                performer=artist,  # Sanatçı adını ekle
+                caption="🎵",  # Müzik emojisi
                 parse_mode='HTML'
             )
             
-            # Şarkıyı müzik playlistine ekle
-            await context.bot.add_message_to_media_group(
-                chat_id=update.effective_chat.id,
-                message_id=message.message_id,
-                media_group_id="music_playlist"
-            )
     except Exception as e:
         logger.error(f"Ses dosyası gönderme hatası: {str(e)}")
         await update.message.reply_text("Ses dosyası gönderilirken bir hata oluştu.")
