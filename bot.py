@@ -368,9 +368,6 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     try:
-        # İndirme başladı mesajını gönder
-        progress_message = await update.message.reply_text("🎵 Tidal'dan indirme başladı...")
-        
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
         
@@ -627,9 +624,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             await update.message.reply_text("❌ İşlem başarısız")
             clean_downloads()
         
-        # İndirme başladı mesajını sil
-        await progress_message.delete()
-        
         # Dosyayı temizle
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -654,9 +648,6 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # İndirme başladı mesajını gönder
-        progress_message = await update.message.reply_text("📺 YouTube'dan indirme başladı...")
-        
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
         
