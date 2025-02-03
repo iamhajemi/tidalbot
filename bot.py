@@ -368,7 +368,7 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     try:
-        # İndirme başladı mesajını gönder ve mesaj ID'sini sakla
+        # İndirme başladı mesajını gönder
         progress_message = await update.message.reply_text("🎵 Tidal'dan indirme başladı...")
         
         # Kullanıcının gönderdiği mesajı sil
@@ -655,6 +655,9 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
+        
+        # İndirme mesajını gönder ve sakla
+        download_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # İndirme klasörünü oluştur
         download_path = os.path.join(os.getcwd(), "downloads")
