@@ -440,11 +440,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
                         all_files.append(os.path.join(root, file))
             
             if not all_files:
-                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
                 return
-            
-            # Şarkılar bulundu, göndermeye başla
-            await update.message.reply_text(f"📝 Toplam {len(all_files)} şarkı bulundu, gönderiliyor...")
             
             # Her şarkıyı gönder
             for file_path in all_files:
@@ -466,12 +462,11 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
                 except Exception as e:
                     logger.error(f"Dosya gönderme hatası: {str(e)}")
                     continue
-            
+        
             clean_downloads()
             
         except Exception as e:
             logger.error(f"Hata: {str(e)}")
-            await update.message.reply_text("❌ İşlem başarısız")
             clean_downloads()
         
         # Dosyayı temizle
@@ -480,9 +475,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
-        error_message = await update.message.reply_text(f"İndirme hatası: {str(e)}")
-        await asyncio.sleep(3)
-        await error_message.delete()
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
