@@ -392,7 +392,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             if 'playlist' in url:
                 playlist_match = re.search(r'playlist/([a-zA-Z0-9-]+)', url)
                 if not playlist_match:
-                    await update.message.reply_text("❌ Geçerli bir Tidal playlist linki gönderin")
+                    error_msg = await update.message.reply_text("❌ Geçerli bir Tidal playlist linki gönderin")
+                    await asyncio.sleep(3)
+                    await error_msg.delete()
                     return
                 
                 playlist_id = playlist_match.group(1)
@@ -471,7 +473,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             elif 'album' in url:
                 album_match = re.search(r'album/(\d+)', url)
                 if not album_match:
-                    await update.message.reply_text("❌ Geçerli bir Tidal albüm linki gönderin")
+                    error_msg = await update.message.reply_text("❌ Geçerli bir Tidal albüm linki gönderin")
+                    await asyncio.sleep(3)
+                    await error_msg.delete()
                     return
                 
                 album_id = album_match.group(1)
@@ -633,8 +637,8 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
         error_message = await update.message.reply_text(f"İndirme hatası: {str(e)}")
-        await asyncio.sleep(3)  # 3 saniye göster
-        await error_message.delete()  # Sonra sil
+        await asyncio.sleep(3)
+        await error_message.delete()
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
@@ -759,8 +763,8 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
         error_message = await update.message.reply_text(f"İndirme hatası: {str(e)}")
-        await asyncio.sleep(3)  # 3 saniye göster
-        await error_message.delete()  # Sonra sil
+        await asyncio.sleep(3)
+        await error_message.delete()
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
