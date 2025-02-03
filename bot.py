@@ -374,11 +374,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
         
-        # İndirme klasörünü tanımla
+        # İndirme klasörünü tanımla ve temizle
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
-        
-        # İndirme klasörünü temizle
         clean_downloads()
         
         # Tidal URL kontrolü
@@ -634,6 +632,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
+        # Hata mesajı kalıcı olacak
         await update.message.reply_text(f"İndirme hatası: {str(e)}")
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -656,15 +655,13 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
         
-        # İndirme mesajını gönder ve sakla
-        download_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
-        
-        # İndirme klasörünü oluştur
+        # İndirme klasörünü oluştur ve temizle
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
-        
-        # İndirme klasörünü temizle
         clean_downloads()
+        
+        # İndirme mesajını gönder ve sakla
+        download_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # YouTube URL kontrolü
         url = update.message.text.strip()
@@ -760,8 +757,8 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
-        await update.message.reply_text("❌ İşlem başarısız")
-        clean_downloads()
+        # Hata mesajı kalıcı olacak
+        await update.message.reply_text(f"İndirme hatası: {str(e)}")
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
