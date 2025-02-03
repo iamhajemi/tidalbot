@@ -408,14 +408,11 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
-    # İndirme klasörünü tanımla
     download_path = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_path, exist_ok=True)
     
-    # İndirme klasörünü temizle
     clean_downloads()
     
-    # Tidal URL kontrolü
     if not 'tidal.com' in url:
         await update.message.reply_text(
             "❌ Geçerli bir Tidal linki gönderin",
@@ -425,15 +422,25 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # İndirme başladı mesajı
-        await send_status_message(update, context, "İndirme başladı...")
+        status_message = await update.message.reply_text("⬇️ Tidal'dan indiriliyor...")
         
-        # İndirme işlemleri...
+        # Tidal indirme işlemleri burada...
         
-        # İşlem tamamlandı mesajı
-        await send_status_message(update, context, "İndirme tamamlandı, dosya gönderiliyor...")
+        # İndirilen dosyaları bul ve gönder
+        found_files = await find_music_file(download_path)
         
-        # Dosyayı gönder
-        await send_audio(update, context, file_path, title)
+        if found_files:
+            for file_path in found_files:
+                with open(file_path, 'rb') as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=update.effective_chat.id,
+                        audio=audio_file,
+                        title=os.path.basename(file_path)
+                    )
+        
+        # Durum mesajını sil
+        await status_message.delete()
+        clean_downloads()
         
     except Exception as e:
         logger.error(f"İndirme hatası: {str(e)}")
@@ -460,10 +467,8 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
-    # İndirme klasörünü temizle
     clean_downloads()
     
-    # YouTube URL kontrolü
     if not ('youtube.com' in url or 'youtu.be' in url):
         await update.message.reply_text(
             "❌ Geçerli bir YouTube linki gönderin",
@@ -472,23 +477,22 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
+        # İndirme başladı mesajı
+        status_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
-        # İndirme klasörünü oluştur
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
         
-        # yt-dlp komutunu çalıştır
         process = subprocess.Popen(
             [
                 "yt-dlp",
-                "-x",  # Sadece ses
-                "--audio-format", "mp3",  # MP3 formatı
-                "--audio-quality", "0",  # En iyi kalite
-                "--embed-metadata",  # Metadatayı ekle
-                "--parse-metadata", "title:%(title)s",  # Başlığı al
-                "--parse-metadata", "artist:%(uploader)s",  # Yükleyeni sanatçı olarak al
-                "-o", os.path.join(download_path, "%(title)s - %(uploader)s.%(ext)s"),  # Çıktı formatı
+                "-x",
+                "--audio-format", "mp3",
+                "--audio-quality", "0",
+                "--embed-metadata",
+                "--parse-metadata", "title:%(title)s",
+                "--parse-metadata", "artist:%(uploader)s",
+                "-o", os.path.join(download_path, "%(title)s - %(uploader)s.%(ext)s"),
                 url
             ],
             stdout=subprocess.PIPE,
@@ -497,7 +501,6 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             errors='ignore'
         )
         
-        # Çıktıyı gerçek zamanlı olarak kontrol et
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
@@ -508,7 +511,6 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "ERROR" in output or "Error" in output:
                     await update.message.reply_text(f"❌ Hata: {output}")
         
-        # İşlem tamamlandı, çıktıyı kontrol et
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
@@ -516,10 +518,8 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ İndirme başarısız")
             return
         
-        # İndirme sonrası biraz bekle
         await asyncio.sleep(3)
         
-        # İndirilen dosyaları bul
         all_files = []
         for file in os.listdir(download_path):
             if file.endswith('.mp3'):
@@ -529,27 +529,31 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
             return
         
-        # Her dosyayı gönder
+        # Her dosyayı gönder ve durum mesajını sil
         for file_path in all_files:
             try:
-                # Dosya bilgilerini al
                 file_name = os.path.basename(file_path)
                 title = os.path.splitext(file_name)[0]
                 
-                # Dosya adından sanatçı ve başlığı ayır
                 if " - " in title:
                     artist, song_title = title.split(" - ", 1)
                 else:
                     artist = "YouTube"
                     song_title = title
                 
-                # Dosyayı gönder
-                await send_audio(update, context, file_path, title)
+                # Şarkıyı gönder
+                with open(file_path, 'rb') as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=update.effective_chat.id,
+                        audio=audio_file,
+                        title=title
+                    )
             except Exception as e:
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
                 continue
         
-        await update.message.reply_text("✅ YouTube indirme tamamlandı!")
+        # Durum mesajını sil
+        await status_message.delete()
         clean_downloads()
             
     except Exception as e:
