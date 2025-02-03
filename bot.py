@@ -369,10 +369,10 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url: str):
     try:
         # İndirme başladı mesajını gönder ve mesaj ID'sini sakla
-        progress_message = await update.message.reply_text("İndirme başladı...")
+        progress_message = await update.message.reply_text("🎵 Tidal'dan indirme başladı...")
         
-        # Orijinal link mesajını sakla
-        link_message = await update.message.reply_text(f"Original link: {url}")
+        # Kullanıcının gönderdiği mesajı sil
+        await update.message.delete()
         
         # İndirme klasörünü tanımla
         download_path = os.path.join(os.getcwd(), "downloads")
@@ -625,9 +625,8 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             await update.message.reply_text("❌ İşlem başarısız")
             clean_downloads()
         
-        # Geçici mesajları sil
+        # İndirme başladı mesajını sil
         await progress_message.delete()
-        await link_message.delete()
         
         # İndirme tamamlandı mesajını gönder ve hemen sil
         complete_message = await update.message.reply_text("İndirme tamamlandı!")
@@ -639,7 +638,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
-        # Hata mesajını gönder (artık silmiyoruz)
         await update.message.reply_text(f"İndirme hatası: {str(e)}")
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -674,6 +672,12 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
+        # İndirme başladı mesajını gönder
+        progress_message = await update.message.reply_text("📺 YouTube'dan indirme başladı...")
+        
+        # Kullanıcının gönderdiği mesajı sil
+        await update.message.delete()
+        
         await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # İndirme klasörünü oluştur
@@ -752,7 +756,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         audio=audio_file,
                         title=song_title,
                         performer=artist,
-                        caption=f"🎵 {song_title}\n👤 {artist}\n📺 YouTube"
+                        caption=f"🎵 {song_title}\n👤 {artist}"
                     )
             except Exception as e:
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
