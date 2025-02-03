@@ -628,10 +628,6 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
         # İndirme başladı mesajını sil
         await progress_message.delete()
         
-        # İndirme tamamlandı mesajını gönder ve hemen sil
-        complete_message = await update.message.reply_text("İndirme tamamlandı!")
-        await complete_message.delete()
-        
         # Dosyayı temizle
         if os.path.exists(file_path):
             os.remove(file_path)
