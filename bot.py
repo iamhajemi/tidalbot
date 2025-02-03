@@ -649,24 +649,6 @@ async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await set_quality(update, context)
 
 async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """YouTube'dan müzik indir"""
-    url = update.message.text.strip()
-    chat_id = update.message.chat_id
-    user = update.effective_user
-    
-    logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
-    
-    # İndirme klasörünü temizle
-    clean_downloads()
-    
-    # YouTube URL kontrolü
-    if not ('youtube.com' in url or 'youtu.be' in url):
-        await update.message.reply_text(
-            "❌ Geçerli bir YouTube linki gönderin",
-            reply_markup=get_quality_keyboard()
-        )
-        return
-    
     try:
         # İndirme başladı mesajını gönder
         progress_message = await update.message.reply_text("📺 YouTube'dan indirme başladı...")
@@ -674,11 +656,23 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Kullanıcının gönderdiği mesajı sil
         await update.message.delete()
         
-        await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
-        
         # İndirme klasörünü oluştur
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
+        
+        # İndirme klasörünü temizle
+        clean_downloads()
+        
+        # YouTube URL kontrolü
+        url = update.message.text.strip()
+        if not ('youtube.com' in url or 'youtu.be' in url):
+            await update.message.reply_text(
+                "❌ Geçerli bir YouTube linki gönderin",
+                reply_markup=get_quality_keyboard()
+            )
+            return
+        
+        await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
         # yt-dlp komutunu çalıştır
         process = subprocess.Popen(
@@ -748,7 +742,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 # Dosyayı Telegram'a gönder
                 with open(file_path, 'rb') as audio_file:
                     await context.bot.send_audio(
-                        chat_id=chat_id,
+                        chat_id=update.effective_chat.id,
                         audio=audio_file,
                         title=song_title,
                         performer=artist,
