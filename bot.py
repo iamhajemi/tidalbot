@@ -423,6 +423,7 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # İndirme başladı mesajı
         status_message = await update.message.reply_text("⬇️ Tidal'dan indiriliyor...")
+        original_message = update.message  # Kullanıcının gönderdiği orijinal mesaj
         
         # Tidal indirme işlemleri burada...
         
@@ -438,8 +439,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         title=os.path.basename(file_path)
                     )
         
-        # Durum mesajını sil
+        # Durum mesajını ve orijinal linki sil
         await status_message.delete()
+        await original_message.delete()
         clean_downloads()
         
     except Exception as e:
@@ -479,6 +481,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # İndirme başladı mesajı
         status_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
+        original_message = update.message  # Kullanıcının gönderdiği orijinal mesaj
         
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
@@ -552,8 +555,9 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
                 continue
         
-        # Durum mesajını sil
+        # Durum mesajını ve orijinal linki sil
         await status_message.delete()
+        await original_message.delete()
         clean_downloads()
             
     except Exception as e:
