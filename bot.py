@@ -632,8 +632,9 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE, url
             
     except Exception as e:
         logger.error(f"Download error: {str(e)}")
-        # Hata mesajı kalıcı olacak
-        await update.message.reply_text(f"İndirme hatası: {str(e)}")
+        error_message = await update.message.reply_text(f"İndirme hatası: {str(e)}")
+        await asyncio.sleep(3)  # 3 saniye göster
+        await error_message.delete()  # Sonra sil
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Buton tıklamalarını işle"""
@@ -757,8 +758,9 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
     except Exception as e:
         logger.error(f"Hata: {str(e)}")
-        # Hata mesajı kalıcı olacak
-        await update.message.reply_text(f"İndirme hatası: {str(e)}")
+        error_message = await update.message.reply_text(f"İndirme hatası: {str(e)}")
+        await asyncio.sleep(3)  # 3 saniye göster
+        await error_message.delete()  # Sonra sil
 
 async def mode_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Mod seçimi butonlarını işle"""
