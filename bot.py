@@ -367,29 +367,24 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
 async def send_audio(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str, title: str = None):
-    """Ses dosyasını gönder ve önceki mesajları sil"""
+    """Ses dosyasını gönder ve müzik playlistine ekle"""
     try:
-        # Gönderilen tüm durum mesajlarını saklamak için
-        messages_to_delete = context.user_data.get('status_messages', [])
-        
-        # Şarkıyı gönder
         with open(file_path, 'rb') as audio_file:
-            await context.bot.send_audio(
+            message = await context.bot.send_audio(
                 chat_id=update.effective_chat.id,
                 audio=audio_file,
-                title=title
+                title=title,
+                performer="Music Bot",  # Performer ekleyerek playlist'e eklenmesini sağla
+                caption="🎵",  # Müzik emojisi ekle
+                parse_mode='HTML'
             )
             
-        # Tüm durum mesajlarını sil
-        for message in messages_to_delete:
-            try:
-                await message.delete()
-            except Exception as e:
-                logger.error(f"Mesaj silme hatası: {str(e)}")
-                
-        # Mesaj listesini temizle
-        context.user_data['status_messages'] = []
-        
+            # Şarkıyı müzik playlistine ekle
+            await context.bot.add_message_to_media_group(
+                chat_id=update.effective_chat.id,
+                message_id=message.message_id,
+                media_group_id="music_playlist"
+            )
     except Exception as e:
         logger.error(f"Ses dosyası gönderme hatası: {str(e)}")
         await update.message.reply_text("Ses dosyası gönderilirken bir hata oluştu.")
@@ -425,21 +420,17 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_message = await update.message.reply_text("⬇️ Tidal'dan indiriliyor...")
         original_message = update.message  # Kullanıcının gönderdiği orijinal mesaj
         
-        # Tidal indirme işlemleri burada...
-        
-        # İndirilen dosyaları bul ve gönder
         found_files = await find_music_file(download_path)
         
         if found_files:
             for file_path in found_files:
-                with open(file_path, 'rb') as audio_file:
-                    await context.bot.send_audio(
-                        chat_id=update.effective_chat.id,
-                        audio=audio_file,
-                        title=os.path.basename(file_path)
-                    )
+                await send_audio(
+                    update, 
+                    context, 
+                    file_path, 
+                    os.path.basename(file_path)
+                )
         
-        # Durum mesajını ve orijinal linki sil
         await status_message.delete()
         await original_message.delete()
         clean_downloads()
@@ -544,18 +535,16 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     artist = "YouTube"
                     song_title = title
                 
-                # Şarkıyı gönder
-                with open(file_path, 'rb') as audio_file:
-                    await context.bot.send_audio(
-                        chat_id=update.effective_chat.id,
-                        audio=audio_file,
-                        title=title
-                    )
+                await send_audio(
+                    update,
+                    context,
+                    file_path,
+                    title
+                )
             except Exception as e:
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
                 continue
         
-        # Durum mesajını ve orijinal linki sil
         await status_message.delete()
         await original_message.delete()
         clean_downloads()
