@@ -366,27 +366,6 @@ async def set_quality(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await message.reply_text(error_text, reply_markup=get_quality_keyboard())
 
-async def send_audio(update: Update, context: ContextTypes.DEFAULT_TYPE, file_path: str, title: str = None):
-    """Ses dosyasını gönder"""
-    try:
-        with open(file_path, 'rb') as audio_file:
-            await context.bot.send_audio(
-                chat_id=update.effective_chat.id,
-                audio=audio_file,
-                title=title,
-                caption="🎵"
-            )
-    except Exception as e:
-        logger.error(f"Ses dosyası gönderme hatası: {str(e)}")
-        await update.message.reply_text("Ses dosyası gönderilirken bir hata oluştu.")
-
-async def send_status_message(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
-    """Durum mesajı gönder ve referansını sakla"""
-    message = await update.message.reply_text(text)
-    if 'status_messages' not in context.user_data:
-        context.user_data['status_messages'] = []
-    context.user_data['status_messages'].append(message)
-
 async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     chat_id = update.message.chat_id
@@ -394,11 +373,14 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"İstek alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
+    # İndirme klasörünü tanımla
     download_path = os.path.join(os.getcwd(), "downloads")
     os.makedirs(download_path, exist_ok=True)
     
+    # İndirme klasörünü temizle
     clean_downloads()
     
+    # Tidal URL kontrolü
     if not 'tidal.com' in url:
         await update.message.reply_text(
             "❌ Geçerli bir Tidal linki gönderin",
@@ -407,28 +389,239 @@ async def download_music(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # İndirme başladı mesajı
-        status_message = await update.message.reply_text("⬇️ Tidal'dan indiriliyor...")
-        original_message = update.message  # Kullanıcının gönderdiği orijinal mesaj
-        
-        found_files = await find_music_file(download_path)
-        
-        if found_files:
-            for file_path in found_files:
-                await send_audio(
-                    update, 
-                    context, 
-                    file_path, 
-                    os.path.basename(file_path)
-                )
-        
-        await status_message.delete()
-        await original_message.delete()
-        clean_downloads()
-        
+        # URL tipini kontrol et
+        if 'playlist' in url:
+            playlist_match = re.search(r'playlist/([a-zA-Z0-9-]+)', url)
+            if not playlist_match:
+                await update.message.reply_text("❌ Geçerli bir Tidal playlist linki gönderin")
+                return
+            
+            playlist_id = playlist_match.group(1)
+            await update.message.reply_text("🔍 Playlist indiriliyor...")
+            
+            # tidal-dl komutunu çalıştır
+            process = subprocess.Popen(
+                ["tidal-dl", "-l", url],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            
+            # Çıktıyı gerçek zamanlı olarak kontrol et
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    output = output.strip()
+                    logger.info(output)
+                    # Önemli hata mesajlarını kullanıcıya bildir
+                    if "ERROR" in output or "Error" in output or "failed" in output.lower():
+                        await update.message.reply_text(f"⚠️ {output}")
+            
+            # İşlem tamamlandı, çıktıyı kontrol et
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                logger.error(f"Playlist indirme hatası: {stderr}")
+                await update.message.reply_text("❌ Playlist indirme başarısız")
+                return
+            
+            # İndirme sonrası biraz bekle
+            await asyncio.sleep(5)
+            
+            # İndirilen dosyaları bul
+            all_files = []
+            for root, dirs, files in os.walk(download_path):
+                for file in files:
+                    if file.endswith(('.m4a', '.mp3', '.flac')):
+                        all_files.append(os.path.join(root, file))
+            
+            if not all_files:
+                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                return
+            
+            # Şarkılar bulundu, göndermeye başla
+            await update.message.reply_text(f"📝 Toplam {len(all_files)} şarkı bulundu, gönderiliyor...")
+            
+            # Her şarkıyı gönder
+            for index, file_path in enumerate(all_files, 1):
+                try:
+                    # Dosya bilgilerini al
+                    file_name = os.path.basename(file_path)
+                    path_parts = file_path.split(os.sep)
+                    artist = path_parts[-2].split('[')[0].strip() if len(path_parts) > 2 else "Bilinmeyen Sanatçı"
+                    
+                    # Dosyayı Telegram'a gönder
+                    with open(file_path, 'rb') as audio_file:
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=audio_file,
+                            title=os.path.splitext(file_name)[0],
+                            performer=artist,
+                            caption=f"🎵 {file_name}\n👤 {artist}\n📊 {index}/{len(all_files)}"
+                        )
+                except Exception as e:
+                    logger.error(f"Dosya gönderme hatası: {str(e)}")
+                    continue
+            
+            await update.message.reply_text("✅ Playlist gönderme tamamlandı!")
+            clean_downloads()
+            
+        elif 'album' in url:
+            album_match = re.search(r'album/(\d+)', url)
+            if not album_match:
+                await update.message.reply_text("❌ Geçerli bir Tidal albüm linki gönderin")
+                return
+            
+            album_id = album_match.group(1)
+            await update.message.reply_text("⬇️ Albüm indiriliyor...")
+            
+            # tidal-dl komutunu çalıştır
+            process = subprocess.Popen(
+                ["tidal-dl", "-l", url],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            
+            # Çıktıyı gerçek zamanlı olarak kontrol et
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    output = output.strip()
+                    logger.info(output)
+                    if "ERROR" in output or "Error" in output:
+                        await update.message.reply_text(f"❌ Hata: {output}")
+            
+            # İşlem tamamlandı, çıktıyı kontrol et
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                logger.error(f"Albüm indirme hatası: {stderr}")
+                await update.message.reply_text("❌ Albüm indirme başarısız")
+                return
+            
+            # İndirme sonrası biraz bekle
+            await asyncio.sleep(5)
+            
+            # İndirilen dosyaları bul
+            all_files = []
+            for root, dirs, files in os.walk(download_path):
+                for file in files:
+                    if file.endswith(('.m4a', '.mp3', '.flac')):
+                        all_files.append(os.path.join(root, file))
+            
+            if not all_files:
+                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                return
+            
+            # Her şarkıyı gönder
+            for index, file_path in enumerate(all_files, 1):
+                try:
+                    # Dosya bilgilerini al
+                    file_name = os.path.basename(file_path)
+                    path_parts = file_path.split(os.sep)
+                    artist = path_parts[-2].split('[')[0].strip() if len(path_parts) > 2 else "Bilinmeyen Sanatçı"
+                    
+                    # Dosyayı Telegram'a gönder
+                    with open(file_path, 'rb') as audio_file:
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=audio_file,
+                            title=os.path.splitext(file_name)[0],
+                            performer=artist,
+                            caption=f"🎵 {file_name}\n👤 {artist}\n📊 {index}/{len(all_files)}"
+                        )
+                except Exception as e:
+                    logger.error(f"Dosya gönderme hatası: {str(e)}")
+                    continue
+            
+            await update.message.reply_text("✅ Albüm gönderme tamamlandı!")
+            clean_downloads()
+            
+        else:
+            track_match = re.search(r'track/(\d+)', url)
+            if not track_match:
+                await update.message.reply_text("❌ Geçerli bir Tidal linki gönderin")
+                return
+            
+            track_id = track_match.group(1)
+            await update.message.reply_text("⬇️ Şarkı indiriliyor...")
+            
+            # tidal-dl komutunu çalıştır
+            process = subprocess.Popen(
+                ["tidal-dl", "-l", url],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                encoding='utf-8',
+                errors='ignore'
+            )
+            
+            # Çıktıyı gerçek zamanlı olarak kontrol et
+            while True:
+                output = process.stdout.readline()
+                if output == '' and process.poll() is not None:
+                    break
+                if output:
+                    output = output.strip()
+                    logger.info(output)
+                    if "ERROR" in output or "Error" in output:
+                        await update.message.reply_text(f"❌ Hata: {output}")
+            
+            # İşlem tamamlandı, çıktıyı kontrol et
+            stdout, stderr = process.communicate()
+            
+            if process.returncode != 0:
+                logger.error(f"Şarkı indirme hatası: {stderr}")
+                await update.message.reply_text("❌ Şarkı indirme başarısız")
+                return
+            
+            # İndirme sonrası biraz bekle
+            await asyncio.sleep(5)
+            
+            # İndirilen dosyaları bul
+            all_files = []
+            for root, dirs, files in os.walk(download_path):
+                for file in files:
+                    if file.endswith(('.m4a', '.mp3', '.flac')):
+                        all_files.append(os.path.join(root, file))
+            
+            if not all_files:
+                await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
+                return
+            
+            # Her şarkıyı gönder
+            for file_path in all_files:
+                try:
+                    # Dosya bilgilerini al
+                    file_name = os.path.basename(file_path)
+                    path_parts = file_path.split(os.sep)
+                    artist = path_parts[-2].split('[')[0].strip() if len(path_parts) > 2 else "Bilinmeyen Sanatçı"
+                    
+                    # Dosyayı Telegram'a gönder
+                    with open(file_path, 'rb') as audio_file:
+                        await context.bot.send_audio(
+                            chat_id=chat_id,
+                            audio=audio_file,
+                            title=os.path.splitext(file_name)[0],
+                            performer=artist,
+                            caption=f"🎵 {file_name}\n👤 {artist}"
+                        )
+                except Exception as e:
+                    logger.error(f"Dosya gönderme hatası: {str(e)}")
+                    continue
+            
+            await update.message.reply_text("✅ Şarkı gönderme tamamlandı!")
+            clean_downloads()
+            
     except Exception as e:
-        logger.error(f"İndirme hatası: {str(e)}")
-        await update.message.reply_text(f"İndirme sırasında bir hata oluştu: {str(e)}")
+        logger.error(f"Hata: {str(e)}")
+        await update.message.reply_text("❌ İşlem başarısız")
         clean_downloads()
 
 async def quality_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -451,8 +644,10 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     logger.info(f"YouTube indirme isteği alındı: {url} (Kullanıcı: {user.first_name}, ID: {user.id})")
     
+    # İndirme klasörünü temizle
     clean_downloads()
     
+    # YouTube URL kontrolü
     if not ('youtube.com' in url or 'youtu.be' in url):
         await update.message.reply_text(
             "❌ Geçerli bir YouTube linki gönderin",
@@ -461,23 +656,23 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # İndirme başladı mesajı
-        status_message = await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
-        original_message = update.message  # Kullanıcının gönderdiği orijinal mesaj
+        await update.message.reply_text("⬇️ YouTube'dan indiriliyor...")
         
+        # İndirme klasörünü oluştur
         download_path = os.path.join(os.getcwd(), "downloads")
         os.makedirs(download_path, exist_ok=True)
         
+        # yt-dlp komutunu çalıştır
         process = subprocess.Popen(
             [
                 "yt-dlp",
-                "-x",
-                "--audio-format", "mp3",
-                "--audio-quality", "0",
-                "--embed-metadata",
-                "--parse-metadata", "title:%(title)s",
-                "--parse-metadata", "artist:%(uploader)s",
-                "-o", os.path.join(download_path, "%(title)s - %(uploader)s.%(ext)s"),
+                "-x",  # Sadece ses
+                "--audio-format", "mp3",  # MP3 formatı
+                "--audio-quality", "0",  # En iyi kalite
+                "--embed-metadata",  # Metadatayı ekle
+                "--parse-metadata", "title:%(title)s",  # Başlığı al
+                "--parse-metadata", "artist:%(uploader)s",  # Yükleyeni sanatçı olarak al
+                "-o", os.path.join(download_path, "%(title)s - %(uploader)s.%(ext)s"),  # Çıktı formatı
                 url
             ],
             stdout=subprocess.PIPE,
@@ -486,6 +681,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             errors='ignore'
         )
         
+        # Çıktıyı gerçek zamanlı olarak kontrol et
         while True:
             output = process.stdout.readline()
             if output == '' and process.poll() is not None:
@@ -496,6 +692,7 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if "ERROR" in output or "Error" in output:
                     await update.message.reply_text(f"❌ Hata: {output}")
         
+        # İşlem tamamlandı, çıktıyı kontrol et
         stdout, stderr = process.communicate()
         
         if process.returncode != 0:
@@ -503,8 +700,10 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ İndirme başarısız")
             return
         
+        # İndirme sonrası biraz bekle
         await asyncio.sleep(3)
         
+        # İndirilen dosyaları bul
         all_files = []
         for file in os.listdir(download_path):
             if file.endswith('.mp3'):
@@ -514,30 +713,34 @@ async def youtube_download(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ İndirilen şarkı bulunamadı")
             return
         
-        # Her dosyayı gönder ve durum mesajını sil
+        # Her dosyayı gönder
         for file_path in all_files:
             try:
+                # Dosya bilgilerini al
                 file_name = os.path.basename(file_path)
                 title = os.path.splitext(file_name)[0]
                 
+                # Dosya adından sanatçı ve başlığı ayır
                 if " - " in title:
                     artist, song_title = title.split(" - ", 1)
                 else:
                     artist = "YouTube"
                     song_title = title
                 
-                await send_audio(
-                    update,
-                    context,
-                    file_path,
-                    title
-                )
+                # Dosyayı Telegram'a gönder
+                with open(file_path, 'rb') as audio_file:
+                    await context.bot.send_audio(
+                        chat_id=chat_id,
+                        audio=audio_file,
+                        title=song_title,
+                        performer=artist,
+                        caption=f"🎵 {song_title}\n👤 {artist}\n📺 YouTube"
+                    )
             except Exception as e:
                 logger.error(f"Dosya gönderme hatası: {str(e)}")
                 continue
         
-        await status_message.delete()
-        await original_message.delete()
+        await update.message.reply_text("✅ YouTube indirme tamamlandı!")
         clean_downloads()
             
     except Exception as e:
